@@ -1,0 +1,4 @@
+import(MCMCpack,edgeR)
+export(GeneralizedEstimatorsGrouped,GeneralizedFDREstimators)
+
+
