@@ -1,59 +1,31 @@
 ################################################################################
-# This file contains the main functions for  Grouped and Weighted Generalized FDR Estimators
-# Definitions of modular functions are in companion file "MultipleTesting_HeteroDist_ModFuncs.r"
-# Copyrith: Xiongzhi Chen, 2013 -
-# Contact: xiongzhi.chen@gmail.com
+#######  Grouped and Weighted GenEst        ############
 ################################################################################
+#load things in the main simulation file
 
-
-GeneralizedEstimatorsGrouped = function(data_in = NULL, test_in = NULL, FET_via_in = NULL,
-                                          ss=NULL, gpids_in = NULL, cdisp_in = NULL, nopsinestdisp_in = 5,
-                                          grpby = c("quantileOfRowTotal","kmeans","divergence"), ngrp_in = NULL,
-                                          RefDivergence = NULL,eNetSize = NULL, unif_tol= 10^-3,
-                                            FDRlevel_in = 0.05,lambda_in = 0.5,epsilon_in = 1) 
+GeneralizedEstimatorsGrouped = function(data_in = NULL,grpby = c("quantileOfRowTotal","kmeans","divergence"),ngrp_in = NULL,
+                                          test_in = NULL,FET_via_in = NULL,lowerTail_in = NULL, FDRlevel_in = NULL,
+                                            RefDivergence = NULL,eNetSize = NULL, unif_tol= 10^-3, Tunings =c(0.5,100)) 
 {
-  if (test_in == "Exact Negative Binomial Test") {
-     if (cdisp_in == "Yes")
-       message("^^^Common dispersion will be used for Negative Binomial data")
-     else
-      message("^^^Heterogenous dispersions will be used for Negative Binomial data")
-      }
-  m <- nrow(data_in)
+
+   data_in = as.matrix(data_in)
+   m = nrow(data_in)
   #################  stat of step 1: UNGrouped   ################
-  cat("\n","^^^Implement UNGROUPED generalized estimators ...^^^","\n","\n")
-  UngroupedResults = GeneralizedFDREstimators(data_in, grp.ids = gpids_in,Test = test_in,
-                                              FET_via = FET_via_in, nOptimize = nopsinestdisp_in,
-                                            FDRlevel = FDRlevel_in,lambda = lambda_in,epsilon = epsilon_in,CommonDisp = cdisp_in,ss=ss)
-
-  pval_vec_ungrouped = UngroupedResults[[4]]   # pvalue vector
-  pval_Supp_ungrped =  UngroupedResults[[5]]   # pvalue supports list 
-  deltas_ungrped =  UngroupedResults[[6]]         # 
- 
-  if (test_in == "Exact Negative Binomial Test")      
-          dispest = UngroupedResults[[7]]  # disp or median of dispersions, scalor
-
-  if (test_in == "Exact Negative Binomial Test" & grpby == "divergence" & is.null(eNetSize))
-    cat("^^Grouping by divergence but size of epsilon-net NOT specified. Dynamic e-net size will be used","\n")
-
-  ### start of gathering results 
-   
-       Dis_ugp = UngroupedResults[[1]][[5]]
-       Dis_ST_ugp = UngroupedResults[[2]][[5]]
-       Dis_BH_ugp = UngroupedResults[[3]][[3]]
+  cat("\n","^^^Implement UNGROUPED FDR procedures ...^^^","\n")
+  UngroupedResults = GeneralizedFDREstimators(data=data_in, Test=test_in,
+                                  FET_via = FET_via_in,lowerTail = lowerTail_in, FDRlevel=FDRlevel_in,TuningRange = Tunings) 
+                                          
+  pval_vec_ungrouped = UngroupedResults$pvalues   # pvalue vector
+  pval_Supp_ungrped =  UngroupedResults$pvalSupp   # pvalue supports list 
   
+  # pi0 estimated ungrouped by 2 methods; pi0Est_st_ugp is storey Est 
+  pi0Est_ugp = UngroupedResults$pi0Est; 
   
-  ### end of gathering results
-   
-  # pi0 estimated ungrouped by 2 methods
-  pi0Est_ugp = UngroupedResults[[1]]$pi0Est;   pi0Est_st_ugp = UngroupedResults[[2]]$pi0Est
-
-  ###### end of step 1: UNGrouped   ##################
-
+  ### end of gathering results   UNGrouped
 
   #################  start Step 2: GROUPED ONLY  #################
-
   #################### start: preparations ##################
-  cat("\n","^^ ----- Implement GROUPWISE the procedures ------^^^","\n")
+  cat("\n","^^ ----- Implement GROUPWISE Weighted procedure ------^^^","\n")
 
    ngrp = ngrp_in
 
@@ -61,26 +33,31 @@ GeneralizedEstimatorsGrouped = function(data_in = NULL, test_in = NULL, FET_via_
    grpres_list = vector("list",ngrp);    wgtPval_list = vector("list",ngrp)
    wgtSTPval_list = vector("list",ngrp)
 
-    pi0Est_gped = double(0);   pi0Est_st_gped = double(0)
-    namepiEstgp = double(0);   namepiEst_st_gp = double(0)
-     pi0_ov_gp = 0;   pi0st_ov_gp = 0
+    pi0Est_gped = double(0);    namepiEstgp = double(0);  pi0_ov_gp = 0; 
 
-    grpId_dis = double(0);  grpId_STdis = double(0);  totalCounts = rowSums(data_in)
-
+    grpId_dis = double(0);  grpId_STdis = double(0);  
+    
+    # caution: if it is FET, the 1st 2 columns are observed counts
+    if (test_in == "Binomial Test") {
+       totalCounts = rowSums(data_in)
+       } else {
+     if (test_in == "Fisher's Exact Test" & FET_via_in == "IndividualMarginals")  {
+          totalCounts = rowSums(data_in[,1:2])
+        }
+      if (test_in == "Fisher's Exact Test" & FET_via_in == "PulledMarginals")  {
+          totalCounts = rowSums(data_in)
+       }
+       }
       # caution ids_grps = sort(unique(grp.ids))
       diffCounts = abs(data_in[,1] - data_in[,2])  # if Poisson
 
-     # data in reality has a differtn structure
-     if (test_in == "Exact Negative Binomial Test") {
-        nc = ncol(data_in)
-       diffCounts = abs(rowSums(data_in[,1:(0.5*nc)]) - rowSums(data_in[,(0.5*nc+1):nc]))     }
      #################### end: preparations ##################
 
      ######################################################################################
      ############ Section 2: start: actual grouping and groupwise analysis   ################
      ######################################################################################
 
-     # layout goruping strategy first
+     # layout grouping strategy first
 
       if (grpby == "quantileOfRowTotal") {
           cat("^^Grouping by quantiles of row total counts","\n")
@@ -190,57 +167,35 @@ GeneralizedEstimatorsGrouped = function(data_in = NULL, test_in = NULL, FET_via_
        # start of groupwise analysis by kmeans
        if (grpby == "kmeans")  grpidx_list[[j]] = which(kmgrps$cluster == j)
 
-        # start of groupwise analysis by e-net divergence
-        if ( test_in == "Exact Negative Binomial Test" & grpby == "divergence") {
-         
-         # if reference divergence 
-          if (RefDivergence == "Yes")  {
-             if (j < ngrp)
-              grpidx_list[[j]] = which(div_ref >= div_brks[j] & div_ref < div_brks[j+1])
-             if (j == ngrp)
-                grpidx_list[[j]] = which(div_ref >= div_brks[j] & div_ref <= div_brks[j+1])
-              }  # end if RefDivergences
-          
-          # if not reference divergence
-             if (RefDivergence == "No") {
-               # adjust index of group_lidx    
-                if (lgX > 0 & lgX <m) { 
-                    if (j == 1)  {
-                        grpidx_list[[j]] = id_appr_unif
-                      } else {
-                       grpidx_list[[j]] = grpidx_list_div[[j-1]]  } 
-                     } else {
-                    grpidx_list[[j]] = grpidx_list_div[[j]]
-                    } #
-               }  # end if not reference divergence  
-              
-         } # end of grouping by divergence
+
          
        ############ start of  grouped data, groupwise anlysis  #######
        grpdata_list[[j]] = cbind(data_in[grpidx_list[[j]],],grpidx_list[[j]])
 
        # in order to group, original data is added with a col of total counts
        nc_kep = ncol(data_in)
-       cat("\n","^^-----Estimating pi0 for group ",j,"----","\n")
 
        grpdata_in = grpdata_list[[j]][,1:nc_kep]
-      # cat("^^","groupwise data is a matrix",is.matrix(grpdata_in),";", nrow(grpdata_in),"rows in groups",j,"\n")
+
        CheckIt(grpdata_in)   # check line
 
        ### when a group of data is non-empty, analyze them
        if (nrow(grpdata_in) == 0) {
-          cat("^^^Group",j,"has no data ....","\n")
+          stop("^^^Group ",j," has no data, please adjust the number of group to split data into...","\n")
         } else {
-         twopi0est_gp = twoestimators(lambda_in,epsilon_in,pval_vec_ungrouped[grpidx_list[[j]]],deltas_ungrped[grpidx_list[[j]]])
-         
-          pi0eg = twopi0est_gp[2]; pi0eSTg = twopi0est_gp[1]
+         # estimate groupwise pi0
+         pi0eg =  GenEstProp(pval_vec_ungrouped[grpidx_list[[j]]],pval_Supp_ungrped[grpidx_list[[j]]],Tunings)
+          
+          # removed storey's pi0 est for each group
           pi0Est_gped = c(pi0Est_gped, pi0eg)
-          pi0Est_st_gped = c(pi0Est_st_gped,pi0eSTg)
-
           namepiEstgp = c(namepiEstgp,paste('pi0Est_gp',j,sep=""))
-          namepiEst_st_gp = c(namepiEst_st_gp,paste('pi0Est_st_gp',j,sep=""))
-       }   ##  only analyze non-empty grouped data
+       }   ##  only analyze non-empty grouped data     
    } ######## end of loop for (j in 1:ngrp) ######
+   
+   ## display estimated pi0
+    cat("\n","^^--Estimated pi0 for each group by generalized estimator",pi0Est_gped,"--","\n") 
+    if (any(pi0Est_gped==1))
+      cat("^^ --- infinity weight appears --","\n") 
       
        ####################################################################################
        ######### step 3: start of weighting the p-values from the ungrouped procedure  ############
@@ -267,109 +222,50 @@ GeneralizedEstimatorsGrouped = function(data_in = NULL, test_in = NULL, FET_via_
 
          ### step 3.2: get overall pi0est and weight ungrouped pvalues
          for (j in 1:ngrp) {
-            # pi0eg = grpres_list[[j]][[1]]$pi0Est; pi0eSTg = grpres_list[[j]][[2]]$pi0Est
-              pi0eg = pi0Est_gped[j];    pi0eSTg =  pi0Est_st_gped[j]
-             wgt = pi0eg/(1-pi0eg);   wgt_st = pi0eSTg/(1-pi0eSTg)
-
-             if (is.na(wgt) | is.nan(wgt) | is.infinite(wgt))
-                   cat("^^Pathological weight--", wgt,"--via gen est for group",j,"\n")
-             if (is.na(wgt_st) | is.nan(wgt_st) | is.infinite(wgt_st))
-                   cat("^^Pathological weight--", wgt_st,"--via Storey's est for group",j,"\n")
+            # pi0eg = grpres_list[[j]][[1]]$pi0Est
+              pi0eg = pi0Est_gped[j];    wgt = pi0eg/(1-pi0eg);  
 
              ###### start of overall pi0est  #############
               pi0_ov_gp = pi0_ov_gp + pi0eg*length(grpidx_list[[j]])/m
-              pi0st_ov_gp = pi0st_ov_gp + pi0eSTg*length(grpidx_list[[j]])/m
 
              ### weigthing pvalues from ungrouped analysis
              pval_vec_ungrouped_gp = pval_vec_ungrouped[grpidx_list[[j]]]
              wgtPval_list[[j]] =  pval_vec_ungrouped_gp*wgt
-             wgtSTPval_list[[j]] =   pval_vec_ungrouped_gp*wgt_st
 
              }  # end: overall pi0est and weight ungrouped pvalues
 
-       ### weighted/grouped storey's and gen est applicable regardless if  overall pi0est = 1
-              ov_pi0_est = c(pi0st_ov_gp,pi0_ov_gp)
-              if (any(ov_pi0_est >= 1))  cat("^^One of overall estimates of pi0 is one: ",ov_pi0_est,"\n")
-
-              wgtPval_vec = unlist(wgtPval_list);  wgtSTPval_vec = unlist(wgtSTPval_list)
-
-              if (any(is.na(wgtSTPval_vec)) | any(is.nan(wgtSTPval_vec)))  {
-                cat("^^Undefined weighted pvalue via Storey est found. Filtering them out ..","\n")
-                cat("^^ --- UNCOMPENSATED Filtering of NA or NAN p-values effects GROUPED AND WEIGHTED procedure ..","\n")
-
-                wgtPval_vec_filtered = wgtPval_vec[!is.na(wgtPval_vec) & !is.nan(wgtPval_vec)]
-              }   else {  wgtPval_vec_filtered = wgtPval_vec}
-
-
-             if (any(is.na(wgtSTPval_vec)) | any(is.nan(wgtSTPval_vec))) {
-                 cat("^^Undefined weighted pvalue via Storey est found. Filtering them out ..","\n")
-                 cat("^^ --- UNCOMPENSATED Filtering of NA or NAN p-values effects GROUPED AND WEIGHTED procedure ..","\n")
-
-                 wgtSTPval_vec_filtered = wgtSTPval_vec[!is.na(wgtSTPval_vec) & !is.nan(wgtSTPval_vec)]
-             }   else { wgtSTPval_vec_filtered = wgtSTPval_vec }
-
 
        ######### step 3.4: start: apply grouped and weighted scheme to BH if needed #####
+       wgtPval_vec = unlist(wgtPval_list) 
          ### Now on grouped and weighted BH
          if ( pi0_ov_gp >= 1)   {
-           cat("^^Overall pi0 est by Gen Est is", pi0_ov_gp,". BH weighted and grouped is zero..", "\n")
+           cat("^^Overall pi0 est based on all groupwise ests is", pi0_ov_gp,". Setting weighted multiple testing results as zero", "\n")
             TDP_BHwg = 0;   FDP_BHwg = 0;   Dis_BH_gw = double(0) 
             }  else {
-                 cat("^^Implement grouped BH by MEANINGFUL weighting via Gen Est of pi0 ...","\n")
+                 cat("^^Implement weighted procedure by MEANINGFUL weighting ...","\n")
                  FDRlevel_ada = FDRlevel_in/(1- pi0_ov_gp)
-                 BHadaWG <- BHFDRApp(wgtPval_vec_filtered,FDRlevel_ada)
+                 Dis_BH_gw <- BHFDRApp(wgtPval_vec,FDRlevel_ada)
               
-              # if not simulation
-               Dis_BH_gw = BHadaWG[[1]][,2]   
+               wFDR = list("pi0Est" = pi0_ov_gp, "Threshold" = Dis_BH_gw[[2]], "NumberOfDiscoveries" = length(Dis_BH_gw[[1]][,2]),"IndicesOfDiscoveries" = Dis_BH_gw[[1]][,2])   
 
             }  ## end weighted grouped BH by Gen est
 
-          # weighted grouping BH via storey's
-         if ( pi0st_ov_gp >= 1)  {
-            cat("^^Overall pi0 est by Storey is", pi0st_ov_gp ,". BH weighted and grouped is zero..", "\n")
-            TDP_BHwgST = 0;   FDP_BHwgST = 0;    Dis_BH_STgw = double(0) 
-            } else {
-               cat("^^Implement grouped BH by MEANINGFUL weighting via Storey's Est of pi0 ...","\n")
-               FDRlevel_STada = FDRlevel_in/(1- pi0st_ov_gp)
-               BHadaWG_ST <- BHFDRApp(wgtSTPval_vec_filtered,FDRlevel_STada)
-
-                 #### start: results from grouping and weighting of BH via storey's #####
-               # if not simulation
-                Dis_BH_STgw = BHadaWG_ST[[1]][,2] 
-
-            } # end else    weighted grouping via storey's
 
     } # end if partition, then compute weights
 
   #################### step 4: start: collection all results #####################
   # if partition not reached, overall pi0 est is undefined
   if (grpby == "divergence" & non_partition != 0) {
-      pi0_ov_gp = NA;  pi0st_ov_gp = NA }
+      pi0_ov_gp = NA }
 
-  pi0Es = c(pi0Est_ugp,pi0Est_st_ugp,pi0_ov_gp,pi0st_ov_gp,pi0Est_gped,pi0Est_st_gped)
-  nmpi0es = c("pi0E_Gen","pi0E_Storey","pi0E_gwGen","pi0E_gwStorey",namepiEstgp,namepiEst_st_gp)
+  nmpi0es = c("pi0E_GE","pi0E_gGE",namepiEstgp)
+  pi0EstTmp = matrix(0,1,length(nmpi0es))
+  pi0EstTmp[1,] = c(pi0Est_ugp,pi0_ov_gp,pi0Est_gped)
+  colnames(pi0EstTmp) =  nmpi0es
 
- # if grouped by diverence, all overall quanities via weighting in HU 2010 are undefined
-
-## if it is not a simulation study, then no way to know TDP and FDP
- 
-    if (grpby == "divergence" & non_partition != 0) {
-       Dis_BH_STgw = Dis_BH_gw = NA   }
-
-  results_grp = list(Dis_ugp,Dis_ST_ugp,Dis_BH_ugp,Dis_BH_gw,Dis_BH_STgw,pval_vec_ungrouped,pval_Supp_ungrped,deltas_ungrped,pi0Es)
-  nmDis = c("Gen","Storey","BH","GWGen","GWStorey","pval_ungrped","pSupp_ungrped","deltas_ungrped","pi0ests")
-  names(results_grp) = nmDis 
-  
-  cat("\n","^^----Finished gathering grouped/weighted analysis results---^^","\n")
-  
-  if (test_in == "Binomial Test" | test_in == "Fisher's Exact Test")
-    return(results_grp)
-    
-  if (test_in == "Exact Negative Binomial Test")  {
-   results_grp_disp = list(Dis_ugp,Dis_ST_ugp,Dis_BH_ugp,Dis_BH_gw,Dis_BH_STgw,pval_vec_ungrouped,pval_Supp_ungrped,deltas_ungrped,
-                                  pi0Es,dispest)
-   names(results_grp_disp) = c(nmDis,"DispEst")
-   return(results_grp_disp)  }
-      
-
+ # get results
+ results_grp = list("aBHH"=UngroupedResults$aBHH,"BHH"=UngroupedResults$BHH,"BH"=UngroupedResults$BH,
+ "aBH"=UngroupedResults$aBH,
+ "wFDR"=wFDR, "pi0estAll"=pi0EstTmp,"pvalues" =UngroupedResults$pvalues,"pvalSupp" =UngroupedResults$pvalSupp,
+ "adjpval"=UngroupedResults$adjpval)   
 } # end of main function

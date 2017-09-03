@@ -1,4 +1,3 @@
-  
 ####################################################################
 ###########  function 6: check basic numeric properties  ############
 ####################################################################
@@ -7,24 +6,24 @@ CheckIt = function(vector_in) {
    tmp1 = any(is.na(vector_in) | is.nan(vector_in) | is.infinite(vector_in))
    cat("^^any na or nan:",tmp1,"...")
    
-   if(is.list(vector_in)) stop("groupwise data is list","\n")
+   if(is.list(vector_in)) stop("groupwise data is list","\t")
    
    if (is.vector(vector_in)) {
    cat("Min is:",min(vector_in)," Max is:", max(vector_in),"...")
-   cat("length is",length(vector_in),"\n") }
+   cat("length is",length(vector_in),"\t") }
    
    if (is.matrix(vector_in)) {
       nr = nrow(vector_in); nc = ncol(vector_in)
-      cat("nrow:",nr,"; ncol:",nc,"\n")
+      cat("nrow:",nr,"; ncol:",nc,"\t")
      if (nc == 2) {
           rs1 =  rowSums(vector_in)
          cat("^^min rowSum:",min(rs1),"^^Max rowSum:",max(rs1),"\n") 
          }
-    if(nc > 2) {
-       rs1 =  rowSums(vector_in[,1:floor((nc/2))])
-       rs2 =  rowSums(vector_in[,((1+floor((nc/2))):nc)]) 
-     cat("^^Min rowSum gp1:",min(rs1),"; min of rowSum gp2:",min(rs2),"; Max rowTotal",max(rs1+rs2),"\n")  }
-     }
+      if (nc == 4) {
+          rs1 =  rowSums(vector_in[,1:2]) # For fet based on individual marginals
+         cat("^^min rowSum:",min(rs1),"^^Max rowSum:",max(rs1),"\n") 
+         }    
+     }   # third big if
    }  
  
 
@@ -202,40 +201,19 @@ GetDivergenceMatrix = function(scalfac=NULL,pvSpList=NULL)  {
 ######################### ########################## ##########################   
   ### Identify Approximate Uniform, this function also formats different psupport
   ######################### ########################## ########################## 
-  
-  # caution: pvalueByBinoSupport   for Binomial test     support<- c(meantmp,pvalue, psupport)
-# pvalueSupport  for FET    support<- c(meantmp,psupport)
-# pvalueByNegativeBinoSupportApp for ENT   support<- c(meantmp,pvalue,psupport)
  
   Div_Appr_Unif = function(pvSpList=NULL,test_used=NULL,appr_unif_tol = NULL) {
       lg3 = length(pvSpList)
       pv_supp_formatted = vector("list",lg3)
       id_appr_unif = double(0)
        
-     # caution: psupport has different elements 
-       if (test_used == "Binomial Test" | test_used == "Exact Negative Binomial Test") 
-         {
-           for (i in 1:lg3) { 
-             sp_pv = pvSpList[[i]][-1][-1] 
-             pv_supp_formatted[[i]] = sp_pv
-             
-             sp_pv_tmp = c(0,sp_pv)
+          for (i in 1:lg3) {             
+             sp_pv_tmp = c(0,pvSpList[[i]])
              if (max(abs(diff(sp_pv_tmp))) < appr_unif_tol)      
               id_appr_unif = c(id_appr_unif,i)
-          } 
-       }  
-        
-       if (test_used == "Fisher's Exact Test") {
-          for (i in 1:lg3) { 
-             sp_pv = pvSpList[[i]][-1]
-             pv_supp_formatted[[i]] = sp_pv
-             
-             sp_pv_tmp = c(0,sp_pv)
-            if (max(abs(diff(sp_pv_tmp))) < appr_unif_tol)      
-               id_appr_unif = c(id_appr_unif,i)
-            } 
-          }                
-    return(list(pv_supp_formatted,id_appr_unif))       
+          }  
+                      
+    return(list(pvSpList,id_appr_unif))       
   } # end of func
  
  
@@ -250,259 +228,516 @@ GetDivergenceMatrix = function(scalfac=NULL,pvSpList=NULL)  {
 
      # caution: psupport has different elements
        for (i in 1:lg3) {
-         if (test_used == "Binomial Test" | test_used == "Exact Negative Binomial Test")
-           sp_pv = pvSpList[[i]][-1][-1]
-
-         if (test_used == "Fisher's Exact Test")
-           sp_pv = pvSpList[[i]][-1]
 
          # using unif as reference distribution
-         sp_pv_tmp = c(0,sp_pv)
+         sp_pv_tmp = c(0,pvSpList[[i]])
          d_ref_unif[i] = max(abs(diff(sp_pv_tmp)))
-         s_supp[i] = length(sp_pv)
+         s_supp[i] = length(pvSpList[[i]])
        }
     return(list(d_ref_unif,s_supp))
   } # end of func
    
   
-
-################## edgeR extracted function: estimateCommonDisp
-#  added: if one library size is computed zero, stop since normalization is not possible
-# changed: number of times optimize is applied from 2 to 5
-# changed: end point of search interval in optimize
-# added: cat("^^EdgeR: estimate dispersion in process. delta = ")
-
-estimateCommonDisp_adjusted = function (object, nopsinestdisp = NULL, tol = 1e-06, rowsum.filter = 5, verbose = FALSE)
-{
-    if (!is(object, "DGEList"))
-        stop("Currently supports DGEList objects")
-    group <- object$samples$group <- as.factor(object$samples$group)
-    if (all(tabulate(group) <= 1)) {
-        warning("There is no replication, setting dispersion to NA.")
-        object$common.dispersion <- NA
-        return(object)
-    }
+############################ #########################
+### function compute divergence   as vector
+######################################################      
+GetDivVec = function(scalfac,pvSpList)  {
+  m = length(pvSpList)   
+  lg_div_vec = (m-1)*m/2
+  
+  cat("^^Computing", lg_div_vec, "pairwise divergences. Takes time ...","\n")
+  
+  chi_vec = double(lg_div_vec);   infNorm_vec = double(lg_div_vec)
+  idxPair_div = matrix(0,nrow = lg_div_vec, ncol = 2);   div_vec = double(lg_div_vec) 
+  
+  # start of computing pairwise quantities
+  for (i in 2:m) {
+       sp_pv1 = pvSpList[[i]][-1][-1];  lg1 = length(sp_pv1)
+        stloc = (i-1)*(i-2)/2  # start loc in the vector
+     
+     for (j in 1:(i-1)) {
+       sp_pv2 = pvSpList[[j]][-1][-1]; lg2 = length(sp_pv2)
+     
+       teva = union(sp_pv1,sp_pv2)  # evaluate cdf at union of pvalues 
+       cdfn1 = pvalueDist(teva,sp_pv1);  cdfn2 = pvalueDist(teva,sp_pv2)
+       infNorm = max(abs(cdfn1-cdfn2));  infNorm_vec[stloc+j] = infNorm 
+       
+       chi = abs(lg1 - lg2);   chi_vec[stloc+j] = chi
+       idxPair_div[stloc+j,] =  c(i,j)
+        }
+    }   # end of computing pairwise quantities
     
-    # added 3/20/2013
-    if (any(object$samples$lib.size == 0)) 
-          stop("^^edgeR: zero library size found in DGEList object ...")   #
+      ## compute divergences
+      chiWgt = max(chi_vec); infNormWgt = max(infNorm_vec)
+      
+      if (chiWgt ==0 | infNormWgt == 0) {
+        dev_vec = double(lg_div_vec)
+        cat("^^ Homogeneous null distributions ...","\n")
+      }
+      
+      if (chiWgt ==0 & infNormWgt != 0)  {
+         cat("^^ Homogeneous supports ...","\n") 
+         div_vec = scalfac*infNorm_vec/infNormWgt
+      }
+      
+      if (chiWgt != 0 & infNormWgt == 0)  {
+         cat("^^ Homogeneous masses ...","\n") 
+         div_vec = scalfac*chi_vec/chiWgt
+      }
+      
+      if (chiWgt != 0 & infNormWgt != 0) {
+        cat("^^ Heterogeneous supports and masses ...","\n")
+      div_vec = scalfac*(chi_vec/chiWgt + infNorm_vec/infNormWgt)
+      }
+      
+      cat("^^Finished computing", lg_div_vec, "pairwise divergences...","\n")
+      ## end of computing divergences
+      
+      # plot extreme statistics
+     # chi_L = min(chi_vec); chi_LS = chi_L/chiWgt;  infNorm_L = min(infNorm_vec)
+     # div_M = max(div_vec); div_L = min(div_vec)
+      
+    #  mins = c(chi_L,infNorm_L,div_L);  #  maxs = c(1,infNormWgt,div_M)
+      
+    #  cat("^^For divergences, (chiMin,chiMax):",chi_L,chiWgt,
+     #           "(infNormMin,infNormMax):",infNorm_L,infNormWgt,"(divMin,divMax):",div_L,div_M,"\n")
+      
+    #  plot(mins,maxs,type="n", main = "Ranges of Differences")
+    #  labs = c(expression(chi),expression(infinity),expression(delta))
+    #  text(mins,maxs,labels=labs,cex=0.8,col= 1:3)
+      par(mfrow = c(1,3))
+      boxplot(infNorm_vec, main = "Diffs in Supremum Norms")
+      boxplot(chi_vec/chiWgt,main = "Scaled Diffs in Supports",xlab="")    # bwplot requires library(lattice)
+      boxplot(div_vec, main ="Divergences")
+       
+       
+      return(list(div_vec,idxPair_div))
+      
+  }
+       
+ ## merged from mod func for generalized estimator
+       ##############################################################################
+      #### subsection 1: Function to get full tables for  association studies #########
+      ###############################################################################
+      fulltable <- function(twocoldata)
+      {
+        # m is the # rows in the data
+        m <-nrow(twocoldata)
+        # construct 3-3 full table
+        tables<- array(0, dim=c(3,3,m))
+
+        controlsum<-sum(twocoldata[,1])
+        treatsum<-sum(twocoldata[,2])
+
+         # get 2-by-2 table for each gene
+          tables[1,1,]=twocoldata[,1]
+          tables[1,2,]=twocoldata[,2]
+          tables[2,1,]=controlsum - twocoldata[,1]
+          tables[2,2,]= treatsum -twocoldata[,2]
+
+         # get 3rd row and column for each gene
+         tables[1,3,]= tables[1,1,]+ tables[1,2,]
+         tables[2,3,]= tables[2,1,]+ tables[2,2,]
+
+           tables[3,1,]=rep(controlsum,m)
+           tables[3,2,]=rep(treatsum,m)
+           tables[3,3,]=rep(treatsum+controlsum,m)
+
+         return(tables)
+      }
+
+
+      ################################################################# ###########################
+      #### Subsection 3: Function to Get marginals and cellcounts from generated counts
+      #####             for association stuies
+      ################################################################# ###########################
+
+      getcellcountsandmarginals <- function(countveccontrol,countvectreat)
+      {
+        m <- length(countveccontrol)
+        twocolsimdata <- cbind(countveccontrol,countvectreat)
+        simtables <- fulltable(twocolsimdata)
+
+        simallcellcounts <- vector("list",m)
+        for (i in 1:m) {simallcellcounts[[i]] <- simtables[1:2,1:2,i]}
+
+        simallmarginals <- vector("list",m)
+        for (i in 1:m) {simallmarginals[[i]] <- c(simtables[1,3,i],simtables[2,3,i],simtables[3,1,i])}
+
+         y2 <- list(simallcellcounts,simallmarginals)
+          return(y2)
+      }
+
+      ###################################################################################
+      #### Subsection 4: Function to Get supports under true null
+      #####                when test statistic is non-central hypergeometric
+      ###################################################################################
+
+      ## Function to get support of pvalues,  marginals is a vector as a list component
+      # pvalue support is always computed under true null, so set pis=1
+      pvalueSupport <- function(marginal)
+      {   # if dim(marginals)!=c(3,3),report error
+          masstmp <- dnoncenhypergeom(NA,marginal[1],marginal[2],marginal[3],1)
+          mass <- masstmp[,2]
+          lgh2 = length(mass)
+          # change 11/21: matrix into double
+           temp <- double(lgh2)
+          # temp <- matrix(0,nrow=lgh2,ncol=1)
+          for (i in 1:lgh2)
+          {
+            # temp[i] is the pvalue for i-th table given marginals
+            temp[i] <- sum(mass[which(mass <= mass[i])])
+          }
+          # compute the expectation of pvalue
+           meantmp <- sum(temp*mass)
+           # sort pvalue support
+          psupport <- sort(temp,decreasing=FALSE)
+
+          # save mean to the fist entry
+          support<- c(meantmp,psupport)
+          return(support)
+          }
+
+      ################################################################# ######### ######### ######### #########
+      #### Subsection 5: Function to compuete deltas (lambda - F(lambda) for adjusted estimator         #########
+      ################################################################# ######### #########  ######### #########
+      # works for each support
+      deviations <- function(lambda,asupport)
+      {
+            # remove the lst entry of asupport since it is the mean
+            bigornot <- lambda >= asupport
+            bignum <- sum(bigornot)
+
+             ### if lambda smaller than the smallest pvalue, then delta[i]=lambda
+            if ( bignum ==0)    { delta=lambda}
+
+            # if lambda falls into an interval formed by successive points in support
+            if ( bignum > 0)
+            {      fall= max(which(bigornot))
+             delta=lambda- asupport[-1][fall] }
+          return(delta)
+      }
+
+
+      #################################################################################
+      ####   Subsection 10: Distribution of the p-values  (Generally Applicable)  #########
+      #################################################################################
+
+       pvalueDist <- function(peva,support)
+          {
+            lgh=length(support)
+            lgh3 <- length(peva)
+            y <- double(lgh3)
+            for (i in 1:lgh3)  {
+              cpv <- peva[i] >= support
+              # the key is to compare where t falls in the support
+              if (sum(cpv)==0) {y[i]=0} # because t is strictly less than minimum of support
+              else if (sum(cpv)==lgh) {y[i]=1} # because t is no less than maximum of support
+              else # t falls in one interval
+              {  y[i] <- support[max(which(cpv))]   }
+            }
+            return(y)
+            }
+
+
+      ################################################################################### #######################
+      #### Subsection 14: pvalue supports, under true null  Test Stat ~ Bino for equality of two Poisson   #########
+      ###################################################################################   #####################
+
+      pvalueByBinoSupport <- function(marginal)
+      {
+          #  under null that two poisson rates are equal, the UMP test follows Binomial with p=0.5
+          # get all possible masses
+          mass <- dbinom(seq(from=0,to=marginal[2]),marginal[2],0.5)
+
+          ## compute pvalue
+          realizedmass <- dbinom(marginal[1],marginal[2],0.5)
+
+           # temp[i] is the two-sided pvalue for i-th table given marginals
+           pvalue <- sum(mass[which(mass <= realizedmass)])
+           if (is.na(pvalue)) print("pvalue is NaN")
+
+          ### compute p value support
+          lgh2 = length(mass)
+          temp <- double(lgh2)
+          for (i in 1:lgh2)
+          {
+            # temp[i] is the two-sided pvalue for i-th table given marginals
+            temp[i] <- sum(mass[which(mass <= mass[i])])
+          }
+          # compute the expectation of pvalue
+           meantmp <- sum(temp*mass)
+           # sort pvalue support
+          psupport <- sort(temp,decreasing=FALSE)
+
+          # save mean to the fist entry
+          support<- c(meantmp,pvalue, psupport)
+          return(support)
+          }
+
+
+     # storey: the new qvalue package stops with error when there is p-value being exactly 1
+     # so the following is used
+     storeyEst <- function(lambda,pvector)
+      {
+          # m is the coherent length of the argument
+           m <- length(pvector)
+
+          over <- m*(1-lambda)
+          stunmin <- sum(pvector > lambda)/over 
+          st <- min(1,stunmin)
+          if (is.nan(st))  print("Storey's estimator of pi0 is NaN")
+          if (is.na(st))  print("Storey's estimator of pi0 is NA")
+
+          return(st)
+      }
+########## added new scheme for generalized estimator
+GenEstProp <- function(pvector,psupports,tunings=c(0.5,100))
+  {
+    # m is the coherent length of the argument
+    m = length(pvector)
+
+    # define smallest guiding value
+    minSupp = unlist(lapply(psupports, min))
+    maxmin = max(minSupp)
+    cat("^^Maximum of the minimum of each support is: ",maxmin,"\n")
     
-    tags.used <- rowSums(object$counts) > rowsum.filter
-    pseudo.obj <- object[tags.used, ]
+    if (maxmin == 1) {
+      cat("^^At lest one p-value CDF is a Dirac mass ...","\n")      
+      singPsupp = which(minSupp == 1)      
+      maxminA = max(minSupp[-singPsupp])
+      
+      cat("^^Second maximum of the minumum of each non-singleton support is: ",maxminA,"\n")
+      if (maxminA < 0.5) {
+        tunings = seq(maxminA+tunings[1]*(0.5-maxminA), 0.5,length.out=tunings[2])
+      } else{ 
+        tunings = c(maxminA)  
+      }
+      
+    } else {
+      singPsupp = double(0)
+      if (maxmin < 0.5) {
+        tunings = seq(maxmin+tunings[1]*(0.5-maxmin), 0.5,length.out=tunings[2])
+      } else {  
+        tunings = c(maxmin)  
+      }
+      
+    } 
+    
+    # define which supports are to be searched
+    if (length(singPsupp) == 0) {
+      schLoc = 1:m
+    }  else {
+      schLoc = (1:m)[-singPsupp]
+    } 
+    
+    # start search
+    Lt = length(tunings)
+    est = double(Lt)
+    cuts = double(m)
+    
+    for (j in 1:Lt) {
+      lamb = tunings[j]
+      
+      for (i in schLoc) {
+        psupp = psupports[[i]]
+        if (sum(psupp<=lamb) >0 ) {
+          tmp = unique(max(psupp[which(psupp<=lamb)]))
+          loc = max(which(psupp==tmp))
+          cuts[i]= psupp[loc]
+        } else  {    cuts[i] = NA }
         
-    disp <- 0.01    # default in edgeR
+      }
+      cutstmp = cuts[!is.na(cuts)]
+      
+      esttmp = sum(as.numeric(pvector[!is.na(cuts)]>cutstmp)/(1-cutstmp))/m + 
+        1/((1-lamb)*m)+ sum(is.na(cuts))/m+length(singPsupp)/m
+      
+      est[j] = min(1,esttmp)
+    }
+    #genest = min(est[est>0])
+    genest = mean(est[!is.nan(est)])
+    return(genest)
+  }
+
+
+    ###################################################
+    ####### Subsection 19: BH FDR procedure        ########
+    ######################################################
+    # BH procedure requires input of pvalues and their indices
+      # BH procedure requires input of pvalues and their indices
+      BHFDRApp <- function(Pvals,FDRlevel)
+      {   
+        if (any(is.na(Pvals)) | any(is.nan(Pvals))) { cat("^^NA or NAN in pvalues... ","\n")
+        print(Pvals[is.na(Pvals)])
+        }
+        
+        if (any(is.na(FDRlevel)) | any(is.nan(FDRlevel))) cat("^^NA or NAN FDRlevel... ","\n")
+           
+       if (is.vector(Pvals))  lgh3 <- length(Pvals)
+        if (is.matrix(Pvals) | is.data.frame(Pvals))  lgh3 <- dim(Pvals)[1] 
+        PvalAndIdx <- cbind(Pvals,seq(1:lgh3))
+        PvalAndIdxOrd <- PvalAndIdx[order(PvalAndIdx[,1]),]
+        
+     #   cat("^^Dims of PvalAndIdxOrd is:",as.vector(dim(PvalAndIdxOrd)),"\n")
     
-    # edegR defult  for (i in 1:2)
-    for (i in 1:nopsinestdisp) {
-        out <- equalizeLibSizes_adjusted(object, dispersion = disp)   # changed from equalizeLibSizes into equalizeLibSizes_adjusted
-        pseudo.obj$counts <- out$pseudo.counts[tags.used, , drop = FALSE]
-        y <- splitIntoGroups(pseudo.obj)  
-            
-        # interval need to be changed, optimize default in edgeR interval = c(1e-04,100/(100 + 1))
-          delta <- optimize(commonCondLogLikDerDelta, interval = c(1e-04,
-            1000/(1000 + 1)), tol = tol, maximum = TRUE, y = y,
-            der = 0)
+        BHstepups <- seq(1:lgh3)*(FDRlevel/lgh3)
+        cmp3 <- PvalAndIdxOrd[,1] <= BHstepups
+        scmp3 <- sum(cmp3)
+    
+       # collect rejections if any
+        if (scmp3 == 0) {   
+        print ("No rejections by BH procedure")        # when there are no rejections
+        rejAndTresh <- list(matrix(numeric(0), ncol=2,nrow=0),0)       
+        }  else   {  r <- max(which(cmp3))        
+            #  cat("^^^ Minimax index in BH is:",r,"\n")
+             # cat("^^^ Minimax threshold in BH is:",BHstepups[r],"\n")
+                   if (r==1) {
+                    # when r =1, a row is chosen, so should change it into a matrix of two columns
+                     BHrej = as.matrix(t(PvalAndIdxOrd[1:r,]))  
+                   #  print(BHrej)
+                   } else {
+                      BHrej <- PvalAndIdxOrd[1:r,]
+                   }
+               rejAndTresh <- list(BHrej,BHstepups[r])    
+              }
+            return(rejAndTresh)
+      }
+
+
+     #### BH based on adjusted p-values in Heller
+      BHfdrForHellerAdjustedPval <- function(Pvals,FDRlevel)
+      {   
+        if (any(is.na(Pvals)) | any(is.nan(Pvals))) { cat("^^NA or NAN in pvalues... ","\n")
+        print(Pvals[is.na(Pvals)])
+        }
+        
+        if (any(is.na(FDRlevel)) | any(is.nan(FDRlevel))) cat("^^NA or NAN FDRlevel... ","\n")
+           
+       if (is.vector(Pvals))  lgh3 <- length(Pvals)
+        if (is.matrix(Pvals) | is.data.frame(Pvals))  lgh3 <- dim(Pvals)[1] 
+        PvalAndIdx <- cbind(Pvals,seq(1:lgh3))
+        PvalAndIdxOrd <- PvalAndIdx[order(PvalAndIdx[,1]),]
+        
+     #   cat("^^Dims of PvalAndIdxOrd is:",as.vector(dim(PvalAndIdxOrd)),"\n")
+        cmp3 <- PvalAndIdxOrd[,1] <= FDRlevel
+        scmp3 <- sum(cmp3)
+    
+       # collect rejections if any
+        if (scmp3 == 0) {   
+        print ("No rejections by BH")        # when there are no rejections
+        rejAndTresh <- list(matrix(numeric(0), ncol=2,nrow=0),0)       
+        }  else   {  r <- max(which(cmp3))        
+            #  cat("^^^ Minimax index in BH is:",r,"\n")
+             # cat("^^^ Minimax threshold in BH is:",BHstepups[r],"\n")
+                   if (r==1) {
+                    # when r =1, a row is chosen, so should change it into a matrix of two columns
+                     BHrej = as.matrix(t(PvalAndIdxOrd[1:r,]))  
+                   #  print(BHrej)
+                   } else {
+                      BHrej <- PvalAndIdxOrd[1:r,]
+                   }
+               rejAndTresh <- list(BHrej,PvalAndIdxOrd[,1][r])    
+              }
+            return(rejAndTresh)
+      }
+  ############################################################# ###########################
+      #### Subsection 23: Function to Get marginals and cellcounts from generated counts
+      #####             for differential expression
+      ################################################################# ###########################
+
+ getcellcountsandmarginals_DE <- function(data_in)
+      {
+        m <-nrow(data_in)
+        # construct 3-3 full table
+        tables<- array(0, dim=c(3,3,m))
+
+        tables[1,1,] = data_in[,1]
+        tables[2,1,] = data_in[,2]
+        tables[1,2,] = data_in[,3] - data_in[,1]
+        tables[2,2,] = data_in[,4] - data_in[,2]
+        tables[1,3,]= data_in[,3]
+        tables[2,3,]= data_in[,4]
+        tables[3,3,] = data_in[,3] + data_in[,4]
+        tables[3,1,] = data_in[,1] + data_in[,2]
+        tables[3,2,] = tables[3,3,] - tables[3,1,]
+        
+        simallcellcounts <- vector("list",m)
+        for (i in 1:m) {simallcellcounts[[i]] <- tables[1:2,1:2,i]}
+
+        simallmarginals <- vector("list",m)
+        for (i in 1:m) {simallmarginals[[i]] <- c(tables[1,3,i],tables[2,3,i],tables[3,1,i])}
+
+         y2 <- list(simallcellcounts,simallmarginals)
+          return(y2)
+      }
+      
+      
+######## one-sided p-value and its support for FET ##########
+     # p-value = pbinom(qbinom(.)) + u dbinom(qbinom(.))
+
+     pvalOneSideFETSupport <- function(cellmatrix, lowertail = "F")
+      {
+           ns = cellmatrix[1,1]; nw = sum(cellmatrix[,1]); nb = sum(cellmatrix[,2]); nd = sum(cellmatrix[1,]);
+          drx = dhyper(ns, nw, nb, nd)
+
+          if (lowertail == "F") {
+            # get support
+            psupport = dhyper(0:ns, nw, nb, nd) + phyper(0:ns, nw, nb, nd,lower.tail = FALSE)
+            psupport = unique(sort(psupport))
+            # tail
+            ptail =  phyper(ns, nw, nb, nd,lower.tail = FALSE)
+            # type of p-value
+               pvalO = ptail + drx
+
+           } else {
+             # get support
+            psupport = phyper(0:nd, nw, nb, nd)
+            psupport = unique(sort(psupport))
+            # tail
+             ptail =  phyper(ns, nw, nb, nd)
+              # type of p-value
+               pvalO = ptail
+
+           }
+
+          # save pval and support
+          pvals = c(pvalO)
+          support<- c(pvals,psupport)   # this is list now
+          return(support)
+          }
+
+ ######## one-sided p-value and its support for Binomial ##########
+     # p-value = pbinom(qbinom(.)) + u dbinom(qbinom(.))
+     pvalOneSideBTSupport <- function(cellvector, lowertail = "F")
+      {
+           ns = cellvector[1]; nt = cellvector[2]
+          drx = dbinom(ns, nt,0.5)
+
+          if (lowertail == "F") {
+            # get support
+            psupport = pbinom(0:ns, nt,0.5,lower.tail = FALSE) + dbinom(0:ns, nt,0.5)
+            psupport = unique(sort(psupport))
+            # tail
+            ptail =  pbinom(ns, nt,0.5,lower.tail = FALSE)
+            # type of pval
+             pvalO = ptail + drx
                 
-       # cat("^^EdgeR: estimate dispersion in process. delta = ")  
-                      
-        delta <- delta$maximum
-        print(delta)
-        
-        disp <- delta/(1 - delta)
-    }
-    if (verbose)
-        cat("EdgeR: Disp =", round(disp, 5), ", BCV =", round(sqrt(disp),
-            4), "\n")
-    object$common.dispersion <- disp
-    object$pseudo.counts <- out$pseudo.counts
-    effective.lib.size <- object$samples$lib.size * object$samples$norm.factors
-    abundance <- mglmOneGroup(object$counts, dispersion = disp,
-        offset = log(effective.lib.size))
-    object$logCPM <- log1p(exp(abundance + log(1e+06)))/log(2)
-    object$pseudo.lib.size <- out$common.lib.size
-    object
-}
+           } else {
+             # get support
+            psupport = pbinom(0:nt, nt,0.5)
+            psupport = unique(sort(psupport))
+            # tail
+             ptail =  pbinom(ns, nt,0.5)
+              # type of p-value
+            pvalO = ptail
+               
+           }
 
+          # save pvalue and support
+          pvals = c(pvalO)
+          support<- c(pvals,psupport)   # this is list now
+          return(support)
+          }
+          
 
-## keyfunction DGEList. 
-# only the message  "Calculating library sizes from column totals" changed to 
-# "EdgeR: Calculating library sizes from column totals."
-
-DGEList_adjusted = function (counts = matrix(0, 0, 0), lib.size = NULL, norm.factors = NULL,
-    group = rep.int(1, ncol(counts)), genes = NULL, remove.zeros = FALSE)
-{
-    counts <- as.matrix(counts)
-    nlib <- ncol(counts)
-    ntags <- nrow(counts)
-    if (nlib > 0 && is.null(colnames(counts)))
-        colnames(counts) <- paste("Sample", 1:ncol(counts), sep = "")
-    rn <- rownames(counts)
-    if (is.null(lib.size)) {
-        lib.size <- colSums(counts)
-        message("EdgeR: Calculating library sizes from column totals.")
-    }
-    else {
-        if (nlib != length(lib.size))
-            stop("Length of 'lib.size' must equal number of columns in 'counts'")
-    }
-    if (is.null(norm.factors)) {
-        norm.factors <- rep(1, nlib)
-    }
-    else {
-        if (nlib != length(norm.factors))
-            stop("Length of 'norm.factors' must equal number of columns in 'counts'")
-    }
-    group <- as.factor(group)
-    if (nlib != length(group))
-        stop("Length of 'group' must equal number of columns in 'counts'")
-    samples <- data.frame(group = group, lib.size = lib.size,
-        norm.factors = norm.factors)
-    row.names(samples) <- colnames(counts)
-    x <- new("DGEList", list(counts = counts, samples = samples))
-    if (!is.null(genes)) {
-        genes <- as.data.frame(genes, stringsAsFactors = FALSE)
-        if (nrow(genes) != ntags)
-            stop("counts and genes have different nrows")
-        if (!is.null(rn))
-            rownames(genes) <- rn
-        x$genes <- genes
-    }
-    if (remove.zeros) {
-        all.zeros <- rowSums(counts, na.rm = TRUE) == 0
-        if (any(all.zeros)) {
-            x <- x[!all.zeros, ]
-            message("Removing ", sum(all.zeros), " rows with all zero counts.")
-        }
-    }
-    x
-}
-
-### in the original, argument dispersion =0, now it is set dispersion = NULL. otherwise running
-## on server error: unsued arguments(0): dispersion = disp when this function is 
-# called and executed by estimateCommonDisp_adjusted
-equalizeLibSizes_adjusted = function (object, dispersion = NULL, common.lib.size = NULL) 
-{
-    d <- dim(object)
-    ntags <- d[1]
-    nlibs <- d[2]
-    lib.size <- object$samples$lib.size * object$samples$norm.factors
-    if (is.null(common.lib.size)) 
-        common.lib.size <- exp(mean(log(lib.size)))
-    levs.group <- unique(object$samples$group)
-    if (length(dispersion) == 1) 
-        dispersion <- rep(dispersion, ntags)
-    input.mean <- output.mean <- matrix(0, ntags, nlibs)
-    for (i in 1:length(levs.group)) {
-        j <- object$samples$group == levs.group[i]
-        beta <- mglmOneGroup(object$counts[, j, drop = FALSE], 
-            dispersion = dispersion, offset = log(lib.size[j]))
-        lambda <- exp(beta)
-        input.mean[, j] <- matrix(lambda, ncol = 1) %*% matrix(lib.size[j], 
-            nrow = 1)
-        output.mean[, j] <- matrix(lambda, ncol = 1) %*% matrix(common.lib.size, 
-            nrow = 1, ncol = sum(j))
-    }
-    pseudo <- q2qnbinom(object$counts, input.mean = input.mean, 
-        output.mean = output.mean, dispersion = dispersion)
-    pseudo[pseudo < 0] <- 0
-    list(pseudo.counts = pseudo, common.lib.size = common.lib.size)
-}
-
-
-## edgeR: non adjusted q2qnbinom
-q2qnbinom_notadjusted = function (x, input.mean, output.mean, dispersion = 0) 
-{
-    if (any(x < 0)) 
-        stop("x must be non-negative")
-    if (any(input.mean < 0)) 
-        stop("input.mean must be non-negative")
-    if (any(output.mean < 0)) 
-        stop("output.mean must be non-negative")
-    if (any(dispersion < 0)) 
-        stop("dispersion must be non-negative")
-    eps <- 1e-14
-    zero <- input.mean < eps | output.mean < eps
-    input.mean[zero] <- input.mean[zero] + 0.25
-    output.mean[zero] <- output.mean[zero] + 0.25
-    ri <- 1 + dispersion * input.mean
-    vi <- input.mean * ri
-    ro <- 1 + dispersion * output.mean
-    vo <- output.mean * ro
-    i <- (x >= input.mean)
-    j <- !i
-    p1 <- p2 <- q1 <- q2 <- x
-    if (any(i)) {
-        p1[i] <- pnorm(x[i], mean = input.mean[i], sd = sqrt(vi[i]), 
-            lower.tail = FALSE, log.p = TRUE)
-        p2[i] <- pgamma(x[i], shape = input.mean[i]/ri[i], scale = ri[i], 
-            lower.tail = FALSE, log.p = TRUE)
-        q1[i] <- qnorm(p1[i], mean = output.mean[i], sd = sqrt(vo[i]), 
-            lower.tail = FALSE, log.p = TRUE)
-        q2[i] <- qgamma(p2[i], shape = output.mean[i]/ro[i], 
-            scale = ro[i], lower.tail = FALSE, log.p = TRUE)
-    }
-    if (any(j)) {
-        p1[j] <- pnorm(x[j], mean = input.mean[j], sd = sqrt(vi[j]), 
-            lower.tail = TRUE, log.p = TRUE)
-        p2[j] <- pgamma(x[j], shape = input.mean[j]/ri[j], scale = ri[j], 
-            lower.tail = TRUE, log.p = TRUE)
-        q1[j] <- qnorm(p1[j], mean = output.mean[j], sd = sqrt(vo[j]), 
-            lower.tail = TRUE, log.p = TRUE)
-        q2[j] <- qgamma(p2[j], shape = output.mean[j]/ro[j], 
-            scale = ro[j], lower.tail = TRUE, log.p = TRUE)
-    }
-    (q1 + q2)/2
-}
-
-### key function in edgeR :  mglmOneGroup
-# a dispersion is estimated from estimateCommonDisp, then its fed into  mglmOneGroup
-# to get abundance, then abundance is used for normalization
-
-mglmOneGroup_notadjusted = function (y, dispersion = 0, offset = 0, maxit = 50, trace = FALSE, 
-    tol = 1e-06) 
-{
-    y <- as.matrix(y)
-    if (any(y < 0)) 
-        stop("y must be non-negative")
-    ntags <- nrow(y)
-    nlibs <- ncol(y)
-    beta <- rep(-Inf, ntags)
-    names(beta) <- rownames(y)
-    if (any(dispersion < 0)) 
-        stop("dispersion must be non-negative")
-    N <- exp(offset)
-    if (all(dispersion == 0)) {
-        if (is.null(dim(N))) 
-            m <- mean(N)
-        else m <- .rowMeans(N, ntags, nlibs)
-        return(log(.rowMeans(y/m, ntags, nlibs)))
-    }
-    dispersion <- rep(dispersion, length = ntags)
-    offset <- expandAsMatrix(offset, dim(y))
-    N <- expandAsMatrix(N, dim(y))
-    beta <- log(.rowMeans(y/N, ntags, nlibs))
-    if (nlibs == 1) 
-        return(beta)
-    iter <- 0
-    i <- is.finite(beta)
-    while (any(i)) {
-        iter <- iter + 1
-        if (iter > maxit) {
-            warning("max iterations exceeded")
-            return(beta)
-        }
-        if (trace) 
-            cat("Iter=", iter, "Still converging=", sum(i), "\n")
-        mu <- exp(beta[i] + offset[i, , drop = FALSE])
-        var.div.mu <- 1 + dispersion[i] * mu
-        m <- nrow(mu)
-        dl <- .rowSums((y[i, , drop = FALSE] - mu)/var.div.mu, 
-            m, nlibs)
-        info <- .rowSums(mu/var.div.mu, m, nlibs)
-        step <- dl/info
-        beta[i] <- beta[i] + step
-        i[i] <- abs(step) > tol
-    }
-    beta
-}     
- 

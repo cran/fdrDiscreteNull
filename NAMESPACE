@@ -1,4 +1,7 @@
-import(MCMCpack,edgeR)
+import(MCMCpack,discreteMTP)
+importFrom("graphics", "boxplot", "par")
+importFrom("stats", "dbinom", "dhyper", "fisher.test", "kmeans",
+             "pbinom", "phyper", "quantile")
 export(GeneralizedEstimatorsGrouped,GeneralizedFDREstimators)
 
 
