@@ -65,7 +65,7 @@ results returned by \cr \code{\link{GeneralizedFDREstimators}}.}
  57(1): 289-300.
  
  Chen, X. and Doerge, R. (2017). A weighted FDR procedure under discrete and heterogeneous null distributions,
- \url{https://arxiv.org/abs/1502.00973}.
+ \url{https://arxiv.org/abs/1502.00973v4}.
 
 Chen, X., Doerge, R. and Heyse, J. F. (2017). Multiple testing with discrete data: proportion of true null hypotheses and two adaptive {FDR} procedures, \url{https://arxiv.org/abs/1410.4274v2}.
  
@@ -76,17 +76,12 @@ Rates, Survival Analysis, and Related Topics, chapter 3.
  Lister, R., O'Malley, R., Tonti-Filippini, J., Gregory, B. D., Berry, Charles C. Millar,
  A. H. and Ecker, J. R. (2008). Highly integrated single-base resolution maps of the
  epigenome in arabidopsis, Cell 133(3): 523-536.
- 
- Storey, J. D., Taylor, J. E. and Siegmund, D. (2004). Strong control, conservative
- point estimation in simultaneous conservative consistency of false discover rates: a
- unified approach, J. R. Statist. Soc. Ser. B 66(1): 187-205.
 }
 \seealso{
 \code{\link{GeneralizedFDREstimators}}
 }
 \examples{
 library(fdrDiscreteNull)
-library(discreteMTP)
 data(listerdata)
 ResTmp = GeneralizedEstimatorsGrouped(listerdata[1:500,], 
   grpby= "quantileOfRowTotal", ngrp_in= 3,test_in= "Fisher's Exact Test",

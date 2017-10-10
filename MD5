@@ -1,9 +1,9 @@
-32aecc9c04567163668ad5c32010d93f *DESCRIPTION
-9d716b8c81b384699e6efa6391481735 *NAMESPACE
-e19c1a221a36b7d41781f75f98fa606d *R/Generalized_FDR_Estimators.r
+c13fbf397d26baef54b693ce1e31906f *DESCRIPTION
+e2bf1c7c4dd576a372c3d30ee77c3ab2 *NAMESPACE
+dd2b7b245a064fc1cba180469d5f422b *R/Generalized_FDR_Estimators.r
 d5bf4e485be406fd89c14ba9accb0e39 *R/MultipleTesting_HeteroDist.r
-a5865a94cf711f9a5f68a86d92482b4a *R/MultipleTesting_HeteroDist_ModFuncs.r
+f58e71f225102b6be6c392d8e55e1352 *R/MultipleTesting_HeteroDist_ModFuncs.r
 d3111f7f951123af001526f20cbfdeb3 *data/listerdata.RData
-1f4d30a0ba2f8fd3ad8d96343017bc36 *man/GeneralizedEstimatorsGrouped.Rd
-8820d34083beffee68076c78e49f6e04 *man/GeneralizedFDREstimators.Rd
+986437d86d7d95e9288da193c6a39af5 *man/GeneralizedEstimatorsGrouped.Rd
+bf04a2979f1775baf30d531104d02ac2 *man/GeneralizedFDREstimators.Rd
 4960a5949e1dbb7a10afc0ba3598c3ea *man/listerdata.Rd

@@ -148,11 +148,11 @@ GeneralizedFDREstimators = function(data=NULL, Test=c("Binomial Test", "Fisher's
   #BH adaptive
   BHAdap <- BHFDRApp(simpvalues,FDRlevel/pi0G)   # BH adaptive with new pi0 est
   # heyse adjusted p-values
-   pDBH <- p.discrete.adjust(simpvalues, pCDFlist, method = "DBH")
+   pDBH <- HeyseAdjFunc(simpvalues, pCDFlist)
   # adaptive heyse   
-  DBHAdap <- BHfdrForHellerAdjustedPval(pDBH,FDRlevel/pi0G) 
+  DBHAdap <- FDRAdjustedPval(pDBH,FDRlevel/pi0G) 
   # heyse   
-  DBH <- BHfdrForHellerAdjustedPval(pDBH,FDRlevel) 
+  DBH <- FDRAdjustedPval(pDBH,FDRlevel) 
   ##################################################################
   # Section 7: put estimates in a dataframe and return it 
   ####################################################################

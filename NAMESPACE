@@ -1,7 +1,8 @@
-import(MCMCpack,discreteMTP)
+import(MCMCpack)
 importFrom("graphics", "boxplot", "par")
 importFrom("stats", "dbinom", "dhyper", "fisher.test", "kmeans",
              "pbinom", "phyper", "quantile")
+importFrom("stats", "stepfun")
 export(GeneralizedEstimatorsGrouped,GeneralizedFDREstimators)
 
 

@@ -605,8 +605,8 @@ GenEstProp <- function(pvector,psupports,tunings=c(0.5,100))
       }
 
 
-     #### BH based on adjusted p-values in Heller
-      BHfdrForHellerAdjustedPval <- function(Pvals,FDRlevel)
+     #### rejection based on adjusted p-values
+      FDRAdjustedPval <- function(Pvals,FDRlevel)
       {   
         if (any(is.na(Pvals)) | any(is.nan(Pvals))) { cat("^^NA or NAN in pvalues... ","\n")
         print(Pvals[is.na(Pvals)])
@@ -741,3 +741,44 @@ GenEstProp <- function(pvector,psupports,tunings=c(0.5,100))
           }
           
 
+ ### heyse2011 adjusted p-values
+    HeyseAdjFunc = function (pvec, pSupps)
+      {
+        m = length(pvec)
+        if (m ==1)
+          stop("^^^At least two p-values and their supports are needed.")
+        # supports[[i]] is the support for pvec[i]; entries of supports[[i]] are ascendingly ordered wrt index
+        
+        # order p-values ascendingly
+        pvecAscend =  pvec[order(pvec,decreasing = F)]
+        
+        # create BH sequence of p-values in terms of Heyse2011 rephrase; m*p_(k)/k, where p_(m) is the largest
+        pBHAscend = m*pvecAscend/(1:m)
+        
+        # obtain Q(t) = \sum_{j=1}^m F_j(t)
+        # obtain matrix F_j(p_(i))
+        stepf = lapply(pSupps, function(x) stepfun(x, c(0, x)))
+        p.mat = matrix(NA, m, m)
+        for (i in 1:m)  {
+          p.mat[i, ] = stepf[[i]](pvecAscend)
+        }
+        # sum of each column; obtain Q(p_(i)) = \sum_{j=1}^m F_j(p_(i))
+        p.sums = apply(p.mat, 2, sum)
+        # Q(p_(i))/i
+        p.sums = p.sums/(1:m)
+        
+        # obtain Heller 2012 with orginal p-vec ordering
+        pR = double(m)
+        pR[m:1] = cummin(p.sums[m:1])
+        op = order(pvec)
+        pR = pmin(1,pR[order(op)])
+        
+        
+        ##### obtain Heyse2011 with orginal p-vec ordering ####
+        pH = double(m)
+        pH[m] = pBHAscend[m]
+        pH[(m-1):1] = pmin(cummin(pBHAscend[m:2]),p.sums[(m-1):1])
+        pH = pmin(1, pH[order(op)])
+        
+        return(pH)
+      }
