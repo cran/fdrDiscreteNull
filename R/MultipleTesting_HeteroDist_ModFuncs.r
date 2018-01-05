@@ -44,10 +44,10 @@ eNetBuilder = function(div_mat = NULL,ngp = NULL, merge_size = NULL,rad = NULL)
   all_idx = 1:m_lt;  # caution, no longer all_idx = 1:m 
   
   idx_left = all_idx ; itn = length(idx_left)
-  centers_id = double(0) ;    grp_idx = vector("list",0)
+  centers_id = double(0) ;    grp_idx = vector("list",ngp)
 
   while(itn & (ngrptmp <= ngp)) {
-     cat("^^Forming group", ngrptmp, "....","\n")
+    # cat("^^Forming group", ngrptmp, "....","\n")
    ball = vector("list",itn);  ball_size = double(itn)
 
    # compare itn balls
@@ -59,25 +59,25 @@ eNetBuilder = function(div_mat = NULL,ngp = NULL, merge_size = NULL,rad = NULL)
     smax_id = which.max(ball_size);  id_mxball = idx_left[smax_id]
     ball_max = ball[[smax_id]];  size_mxball = ball_size[smax_id]
 
-    cat("^^Ids: e-ball center", id_mxball,". Ball size:", size_mxball, "\n") # "ids in ball:",ball_max,"\n")
-
+   # cat("^^Ids: e-ball center", id_mxball,". Ball size:", size_mxball, "\n") # "ids in ball:",ball_max,"\n")
+    
     centers_id = c(centers_id,id_mxball);     grp_idx[[ngrptmp]] = ball_max
     cnt_idx = c(cnt_idx,ball_max)
     # added check
-    cat("^^# of Id used",length(cnt_idx),"\n")
+   # cat("^^# of Id used",length(cnt_idx),"\n")
     
     if (any(cnt_idx <0))     stop("^^negative id in current ids","\n") 
     
     idx_left = all_idx[-cnt_idx]  # take current ids from 1:m
 
     itn = length(idx_left)
-    cat("^^# of ids left currently",itn,"\n") # ". Idx left:", idx_left,"\n")
+   # cat("^^# of ids left currently",itn,"\n") # ". Idx left:", idx_left,"\n")
 
     # Follwing is the best partition, case 1:  ngrptmp <= ngp-1
     if (ngrptmp <= ngp-1) {
        if (itn <= merge_size) {  
          # the above condition should be itn <= merge_size instead of itn < merge_size since it is when ngrptmp <= ngp-1
-         cat("^^Can not form",ngp,"groups each with cardinality no less than",merge_size,"\n")
+       #  cat("^^Can not form",ngp,"groups each with cardinality no less than",merge_size,"\n")
          cat("^^---- Regroup with smaller e-net size ---- ","\n")
          rad = rad/2  # adjust this
          idx_left = 1:m_lt; itn = length(idx_left)
@@ -91,7 +91,7 @@ eNetBuilder = function(div_mat = NULL,ngp = NULL, merge_size = NULL,rad = NULL)
         }
        
        if (itn > merge_size) {
-          cat("^# of id's left to group is", itn,",continue grouping","\n")
+         # cat("^# of id's left to group is", itn,",continue grouping","\n")
          div_mat_in = div_mat[idx_left,][,idx_left]
          }
     }  # end  if (ngrptmp <= ngp-1)
@@ -103,7 +103,7 @@ eNetBuilder = function(div_mat = NULL,ngp = NULL, merge_size = NULL,rad = NULL)
         cat("^^",ngp,"e-balls reached as requested","\n")
 
       if (itn > merge_size) {
-       cat("^^---Some ids left for more groups. Regroup with larger e-net size --- ","\n")
+     #  cat("^^---Some ids left for more groups. Regroup with larger e-net size --- ","\n")
         rad = 1.5*rad  # adjust this
         idx_left = 1:m_lt; itn = length(idx_left)
          ngrptmp = 0;  cnt_idx = double(0);  div_mat_in = div_mat
@@ -132,9 +132,9 @@ eNetFull = function(metrics_in = NULL, ngrp_in = NULL, merge_size = NULL, rad_in
 
       groups_tmp = eNetBuilder(metrics_in,ngrp_in,merge_size,rad_tmp)
       ngp_tmp = length(groups_tmp)
-  #    cat("^^Current # of groups",ngp_tmp,"\n")
-      mgps_tmp = length(groups_tmp[[ngp_tmp]])
-
+  #    check minimal group size
+      mgps_tmp = min(sapply(groups_tmp,length))
+      cat("^^Current achieved minimal group size is", mgps_tmp,"\n")
     } # end of while
     return(groups_tmp)
 }   # end of function
@@ -145,13 +145,13 @@ eNetFull = function(metrics_in = NULL, ngrp_in = NULL, merge_size = NULL, rad_in
 ################## function:  divergence  matrix   ########################## 
 ########################## ########################## ##########################
 
-GetDivergenceMatrix = function(scalfac=NULL,pvSpList=NULL)  {   
+GetDivergenceMatrix = function(pvSpList=NULL)  {   
   
   lgA1 = length(pvSpList)     # caution: no longer m but lgA1
   lgt_div = (lgA1-1)*lgA1/2
   cat("^^Computing", lgt_div, "pairwise divergences. Takes time ...","\n")
   
-  chi_mat = matrix(0,lgA1,lgA1); infNorm_mat = matrix(0,lgA1,lgA1); div_mat = matrix(0,lgA1,lgA1)
+  infNorm_mat = matrix(0,lgA1,lgA1); div_mat = matrix(0,lgA1,lgA1)
   
   # start of computing pairwise quantities
   for (i in 2:lgA1) { 
@@ -159,8 +159,6 @@ GetDivergenceMatrix = function(scalfac=NULL,pvSpList=NULL)  {
            
      for (j in 1:(i-1)) {       
        sp_pv2 = pvSpList[[j]]; lg2 = length(sp_pv2)    #pvSpList has been formated 
-       
-       chi_mat[i,j] = abs(lg1 - lg2)
      
        teva = union(sp_pv1,sp_pv2)  # evaluate cdf at union of pvalue supports 
        cdfn1 = pvalueDist(teva,sp_pv1);  cdfn2 = pvalueDist(teva,sp_pv2)
@@ -168,33 +166,11 @@ GetDivergenceMatrix = function(scalfac=NULL,pvSpList=NULL)  {
        infNorm_mat[i,j] = max(abs(cdfn1-cdfn2)) 
         }
     }   # end of computing pairwise quantities
-    
-      ## compute divergences
-      chiWgt = max(chi_mat); infNormWgt = max(infNorm_mat)
       
-      chi_mat = chi_mat + t(chi_mat) ;  infNorm_mat = infNorm_mat + t(infNorm_mat)
+     infNorm_mat_sym = infNorm_mat + t(infNorm_mat)
       
-      if (chiWgt ==0 | infNormWgt == 0)   cat("^^ Homogeneous null distributions ...","\n")
-  
-      if (chiWgt ==0 & infNormWgt != 0)  {
-         cat("^^ Homogeneous supports ...","\n") 
-         div_mat = scalfac*(infNorm_mat/infNormWgt)
-      }
-      
-      if (chiWgt != 0 & infNormWgt == 0)  {
-         cat("^^ Homogeneous masses ...","\n") 
-         div_mat = scalfac*(chi_mat/chiWgt)
-      }
-      
-      if (chiWgt != 0 & infNormWgt != 0) {
-        cat("^^ Heterogeneous supports and masses ...","\n")
-        div_mat = scalfac*(chi_mat + infNorm_mat)/(chiWgt + infNormWgt)
-      }
-      
-      div_mat = div_mat + t(div_mat) # since diagnal is zero, this is correct
-      cat("^^Finished computing matrix of pairwise divergences...","\n")
-       
-      return(list(div_mat,chi_mat/chiWgt,infNorm_mat,chiWgt))
+      cat("^^Finished computing matrix of pairwise divergences...","\n")       
+      return(infNorm_mat_sym)
       
   }
   
@@ -217,103 +193,6 @@ GetDivergenceMatrix = function(scalfac=NULL,pvSpList=NULL)  {
   } # end of func
  
  
-########################################################################
-### Compute supremum norm to reference Unif
-########################################################################
- Div_Ref_Unif = function(pvSpList=NULL,test_used=NULL) {
-
-      lg3 = length(pvSpList)
-      d_ref_unif = double(lg3)
-      s_supp = double(lg3)
-
-     # caution: psupport has different elements
-       for (i in 1:lg3) {
-
-         # using unif as reference distribution
-         sp_pv_tmp = c(0,pvSpList[[i]])
-         d_ref_unif[i] = max(abs(diff(sp_pv_tmp)))
-         s_supp[i] = length(pvSpList[[i]])
-       }
-    return(list(d_ref_unif,s_supp))
-  } # end of func
-   
-  
-############################ #########################
-### function compute divergence   as vector
-######################################################      
-GetDivVec = function(scalfac,pvSpList)  {
-  m = length(pvSpList)   
-  lg_div_vec = (m-1)*m/2
-  
-  cat("^^Computing", lg_div_vec, "pairwise divergences. Takes time ...","\n")
-  
-  chi_vec = double(lg_div_vec);   infNorm_vec = double(lg_div_vec)
-  idxPair_div = matrix(0,nrow = lg_div_vec, ncol = 2);   div_vec = double(lg_div_vec) 
-  
-  # start of computing pairwise quantities
-  for (i in 2:m) {
-       sp_pv1 = pvSpList[[i]][-1][-1];  lg1 = length(sp_pv1)
-        stloc = (i-1)*(i-2)/2  # start loc in the vector
-     
-     for (j in 1:(i-1)) {
-       sp_pv2 = pvSpList[[j]][-1][-1]; lg2 = length(sp_pv2)
-     
-       teva = union(sp_pv1,sp_pv2)  # evaluate cdf at union of pvalues 
-       cdfn1 = pvalueDist(teva,sp_pv1);  cdfn2 = pvalueDist(teva,sp_pv2)
-       infNorm = max(abs(cdfn1-cdfn2));  infNorm_vec[stloc+j] = infNorm 
-       
-       chi = abs(lg1 - lg2);   chi_vec[stloc+j] = chi
-       idxPair_div[stloc+j,] =  c(i,j)
-        }
-    }   # end of computing pairwise quantities
-    
-      ## compute divergences
-      chiWgt = max(chi_vec); infNormWgt = max(infNorm_vec)
-      
-      if (chiWgt ==0 | infNormWgt == 0) {
-        dev_vec = double(lg_div_vec)
-        cat("^^ Homogeneous null distributions ...","\n")
-      }
-      
-      if (chiWgt ==0 & infNormWgt != 0)  {
-         cat("^^ Homogeneous supports ...","\n") 
-         div_vec = scalfac*infNorm_vec/infNormWgt
-      }
-      
-      if (chiWgt != 0 & infNormWgt == 0)  {
-         cat("^^ Homogeneous masses ...","\n") 
-         div_vec = scalfac*chi_vec/chiWgt
-      }
-      
-      if (chiWgt != 0 & infNormWgt != 0) {
-        cat("^^ Heterogeneous supports and masses ...","\n")
-      div_vec = scalfac*(chi_vec/chiWgt + infNorm_vec/infNormWgt)
-      }
-      
-      cat("^^Finished computing", lg_div_vec, "pairwise divergences...","\n")
-      ## end of computing divergences
-      
-      # plot extreme statistics
-     # chi_L = min(chi_vec); chi_LS = chi_L/chiWgt;  infNorm_L = min(infNorm_vec)
-     # div_M = max(div_vec); div_L = min(div_vec)
-      
-    #  mins = c(chi_L,infNorm_L,div_L);  #  maxs = c(1,infNormWgt,div_M)
-      
-    #  cat("^^For divergences, (chiMin,chiMax):",chi_L,chiWgt,
-     #           "(infNormMin,infNormMax):",infNorm_L,infNormWgt,"(divMin,divMax):",div_L,div_M,"\n")
-      
-    #  plot(mins,maxs,type="n", main = "Ranges of Differences")
-    #  labs = c(expression(chi),expression(infinity),expression(delta))
-    #  text(mins,maxs,labels=labs,cex=0.8,col= 1:3)
-      par(mfrow = c(1,3))
-      boxplot(infNorm_vec, main = "Diffs in Supremum Norms")
-      boxplot(chi_vec/chiWgt,main = "Scaled Diffs in Supports",xlab="")    # bwplot requires library(lattice)
-      boxplot(div_vec, main ="Divergences")
-       
-       
-      return(list(div_vec,idxPair_div))
-      
-  }
        
  ## merged from mod func for generalized estimator
        ##############################################################################
@@ -368,33 +247,56 @@ GetDivVec = function(scalfac,pvSpList)  {
           return(y2)
       }
 
-      ###################################################################################
-      #### Subsection 4: Function to Get supports under true null
-      #####                when test statistic is non-central hypergeometric
-      ###################################################################################
+ ###################################################################################
+  #### Subsection 4: Function to two-sided p-value support for FET
+  ###################################################################################
 
-      ## Function to get support of pvalues,  marginals is a vector as a list component
-      # pvalue support is always computed under true null, so set pis=1
-      pvalueSupport <- function(marginal)
-      {   # if dim(marginals)!=c(3,3),report error
-          masstmp <- dnoncenhypergeom(NA,marginal[1],marginal[2],marginal[3],1)
-          mass <- masstmp[,2]
+    pvalFETSupport <- function(cellmatrix)
+      {
+
+          ns = cellmatrix[1,1]; nw = sum(cellmatrix[,1]); nb = sum(cellmatrix[,2]); nd = sum(cellmatrix[1,])
+#          x <- x[1, 1]; m <- sum(x[, 1]);    n <- sum(x[, 2]); k <- sum(x[1, ])
+#        lo <- max(0, k - n);   hi <- min(k, m);       support <- lo:hi
+#        logdc <- dhyper(support, m, n, k, log = TRUE)
+          lo <- max(0, nd - nb);   hi <- min(nd, nw)
+          support <- lo:hi
+          # all probability masses for this distribution
+          mass = dhyper(support, nw, nb, nd)
+          # realized mass
+          realizedmass = dhyper(ns, nw, nb, nd)
+
+           # two-sided pvalue
+           pvalue <- sum(mass[which(mass <= realizedmass)])
+            # add: sum of probabilities of y such that P(y) < P(X)
+           lessProb = sum(mass[which(mass < realizedmass)])
+           # eqProb: Psum_y P(y) st P(y) = P(x)
+           eqProb = pvalue - lessProb
+           
+           if (is.na(pvalue)) print("pvalue is NaN")
+
+          ### compute p value support
           lgh2 = length(mass)
-          # change 11/21: matrix into double
-           temp <- double(lgh2)
-          # temp <- matrix(0,nrow=lgh2,ncol=1)
+          temp <- double(lgh2)
           for (i in 1:lgh2)
           {
-            # temp[i] is the pvalue for i-th table given marginals
+            # temp[i] is the two-sided pvalue for i-th table given marginals
             temp[i] <- sum(mass[which(mass <= mass[i])])
           }
-          # compute the expectation of pvalue
-           meantmp <- sum(temp*mass)
            # sort pvalue support
-          psupport <- sort(temp,decreasing=FALSE)
+          psupport <- unique(sort(temp,decreasing=FALSE))
 
-          # save mean to the fist entry
-          support<- c(meantmp,psupport)
+          # u either runif or =0.5 or = 1
+        randPval = lessProb + mean(runif(50))*eqProb  # average of 50 realizations
+        randPval = min(1,randPval)
+        
+        # mid p-value
+        MidPval = lessProb + 0.5*eqProb
+        MidPval = min(1,MidPval)
+          # return all three p-values
+          pvals = c(pvalue,MidPval,randPval)
+          
+          # save probless to the fist entry
+          support<- c(pvals, psupport)
           return(support)
           }
 
@@ -453,8 +355,14 @@ GetDivVec = function(scalfac,pvSpList)  {
           ## compute pvalue
           realizedmass <- dbinom(marginal[1],marginal[2],0.5)
 
-           # temp[i] is the two-sided pvalue for i-th table given marginals
+           # two-sided pvalue
            pvalue <- sum(mass[which(mass <= realizedmass)])
+           # add: sum of probabilities of y such that P(y) < P(X)
+           lessProb = sum(mass[which(mass < realizedmass)])
+           # eqProb: Psum_y P(y) st P(y) = P(x)
+           eqProb = pvalue - lessProb
+           
+           # check p-value
            if (is.na(pvalue)) print("pvalue is NaN")
 
           ### compute p value support
@@ -465,13 +373,21 @@ GetDivVec = function(scalfac,pvSpList)  {
             # temp[i] is the two-sided pvalue for i-th table given marginals
             temp[i] <- sum(mass[which(mass <= mass[i])])
           }
-          # compute the expectation of pvalue
-           meantmp <- sum(temp*mass)
-           # sort pvalue support
+          # sort pvalue support
           psupport <- sort(temp,decreasing=FALSE)
-
+          
+          # u either runif or =0.5 or = 1
+        randPval = lessProb + mean(runif(50))*eqProb  
+        randPval = min(1,randPval)
+        
+        # mid p-value
+        MidPval = lessProb + 0.5*eqProb
+        MidPval = min(1,MidPval)
+          # return all three p-values
+          pvals = c(pvalue,MidPval,randPval)
+           
           # save mean to the fist entry
-          support<- c(meantmp,pvalue, psupport)
+          support<- c(pvals, psupport)
           return(support)
           }
 
@@ -676,45 +592,53 @@ GenEstProp <- function(pvector,psupports,tunings=c(0.5,100))
 ######## one-sided p-value and its support for FET ##########
      # p-value = pbinom(qbinom(.)) + u dbinom(qbinom(.))
 
-     pvalOneSideFETSupport <- function(cellmatrix, lowertail = "F")
+     pvalOneSideFETSupport <- function(cellmatrix, Side = "Right")
       {
            ns = cellmatrix[1,1]; nw = sum(cellmatrix[,1]); nb = sum(cellmatrix[,2]); nd = sum(cellmatrix[1,]);
           drx = dhyper(ns, nw, nb, nd)
+          lo <- max(0, nd - nb);   hi <- min(nd, nw)
+          #          x <- x[1, 1]; m <- sum(x[, 1]);    n <- sum(x[, 2]); k <- sum(x[1, ])
+#        lo <- max(0, k - n);   hi <- min(k, m);       support <- lo:hi
+#        logdc <- dhyper(support, m, n, k, log = TRUE)
 
-          if (lowertail == "F") {
+          if (Side == "Right") {
             # get support
-            psupport = dhyper(0:ns, nw, nb, nd) + phyper(0:ns, nw, nb, nd,lower.tail = FALSE)
+            psupport = dhyper(lo:ns, nw, nb, nd) + phyper(lo:ns, nw, nb, nd,lower.tail = FALSE)
             psupport = unique(sort(psupport))
             # tail
             ptail =  phyper(ns, nw, nb, nd,lower.tail = FALSE)
             # type of p-value
                pvalO = ptail + drx
-
-           } else {
+                 pvalMid = ptail + 0.5*drx
+                pvalRnd = ptail + mean(runif(50))*drx
+           } 
+           
+           if (Side == "Left") {
              # get support
-            psupport = phyper(0:nd, nw, nb, nd)
+            psupport = phyper(lo:nd, nw, nb, nd)
             psupport = unique(sort(psupport))
             # tail
              ptail =  phyper(ns, nw, nb, nd)
               # type of p-value
                pvalO = ptail
-
+                 pvalMid = ptail - drx + 0.5*drx
+               pvalRnd = ptail - drx + mean(runif(50))*drx
            }
 
           # save pval and support
-          pvals = c(pvalO)
+          pvals = c(pvalO,pvalMid,pvalRnd)
           support<- c(pvals,psupport)   # this is list now
           return(support)
           }
 
  ######## one-sided p-value and its support for Binomial ##########
      # p-value = pbinom(qbinom(.)) + u dbinom(qbinom(.))
-     pvalOneSideBTSupport <- function(cellvector, lowertail = "F")
+     pvalOneSideBTSupport <- function(cellvector, Side = "Right")
       {
            ns = cellvector[1]; nt = cellvector[2]
           drx = dbinom(ns, nt,0.5)
 
-          if (lowertail == "F") {
+          if (Side == "Right") {
             # get support
             psupport = pbinom(0:ns, nt,0.5,lower.tail = FALSE) + dbinom(0:ns, nt,0.5)
             psupport = unique(sort(psupport))
@@ -722,8 +646,11 @@ GenEstProp <- function(pvector,psupports,tunings=c(0.5,100))
             ptail =  pbinom(ns, nt,0.5,lower.tail = FALSE)
             # type of pval
              pvalO = ptail + drx
-                
-           } else {
+               pvalMid = ptail + 0.5*drx
+                pvalRnd = ptail + mean(runif(50))*drx 
+           } 
+           
+           if (Side == "Left") {
              # get support
             psupport = pbinom(0:nt, nt,0.5)
             psupport = unique(sort(psupport))
@@ -731,11 +658,12 @@ GenEstProp <- function(pvector,psupports,tunings=c(0.5,100))
              ptail =  pbinom(ns, nt,0.5)
               # type of p-value
             pvalO = ptail
-               
+               pvalMid = ptail - drx + 0.5*drx
+               pvalRnd = ptail - drx + mean(runif(50))*drx   
            }
 
           # save pvalue and support
-          pvals = c(pvalO)
+          pvals = c(pvalO,pvalMid,pvalRnd)
           support<- c(pvals,psupport)   # this is list now
           return(support)
           }
@@ -780,5 +708,107 @@ GenEstProp <- function(pvector,psupports,tunings=c(0.5,100))
         pH[(m-1):1] = pmin(cummin(pBHAscend[m:2]),p.sums[(m-1):1])
         pH = pmin(1, pH[order(op)])
         
+        # choose which to return
         return(pH)
+      }
+ 
+ #######################################################################
+    #### Subsection 18:  Storey's procedure               #########
+    #######################################################################
+
+      StoreyFDREst <- function (simpvalues,FDRlevel,pi0est)
+      {
+         m <- length(simpvalues)
+        # step length in search depends on minimal difference between p values
+         sortedpvalvec <- sort(simpvalues)
+         diffsortedpvals <- diff(sortedpvalvec)
+         # since diff does not compute the differece between minimal p value and zero
+         # it should be added, so step length in thresh is the minimum of
+         # minimal diff and min p value
+         threshstep <- min(min(diffsortedpvals[diffsortedpvals > 0]),min(sortedpvalvec))
+
+        # it is known that FDR threshold is no less than bonferroni, but no larger than
+        # FDRlevel. the step length should be sensitive to distances bewteen p values to
+        # make practical change in R(t) as t changes
+        # sometimes threshstep can be so small that R itself can not handle it
+
+        # Step 1: crude search first   do not start from min(sortedpvalvec) when m is small
+        threshveccrude <- seq(from= 0,to=1,by=10^-3)
+        ecdfcrude0 <- max(sum(sortedpvalvec <= threshveccrude[1]),1)/m
+
+        istcrude <-1
+        stFDPcrude <- pi0est*threshveccrude[1]/ecdfcrude0
+         stFDPcrude0 <- stFDPcrude
+        while (stFDPcrude <= FDRlevel)
+        {
+          istcrude <- istcrude+1;
+          # check if mat threshol (t=1) is reach, is so, break
+          if (istcrude > length(threshveccrude)){print("max threshold (t=1) in crude search for Storey's estimators exhausted");break}
+          steCDFcrude <- max(sum(sortedpvalvec <= threshveccrude[istcrude]),1)/m
+          stFDPcrude <- pi0est*threshveccrude[istcrude]/steCDFcrude
+          if (is.na(stFDPcrude) | is.nan(stFDPcrude)) print("NA or NaN occured as FDP of Storey's estimators")
+
+        }
+        if (istcrude == 2) { stsupthreshcrude <- threshveccrude[1]
+             stFDPcrudeAtSThresh <- stFDPcrude0    }     else {
+              stsupthreshcrude <- threshveccrude[istcrude-1]
+             ecdfstsupthreshcrude <- max(sum(sortedpvalvec <= stsupthreshcrude),1)/m
+        stFDPcrudeAtSThresh <- pi0est*stsupthreshcrude/ecdfstsupthreshcrude  }
+      #  cat("stFDPcrudeAtSThresh is",stFDPcrudeAtSThresh,"at sup thresh",stsupthreshcrude,"\n")
+
+        ############################################
+        #### step 2: after a crude threshold has been located, do a finer search from the crude sup threshold
+        ### chen's fdr estimator
+        # check if mat threshol (t=1) is reach, is so, break
+
+         # use while loop for storey's
+         if (stsupthreshcrude == 1) {  print("max threshold (t=1) for Storey's estimators exhausted, no fine search in second round")
+            stsupthresh <- stsupthreshcrude
+         stFDPAtSThresh <- stFDPcrudeAtSThresh} else {
+        threshvecst <- seq(from = stsupthreshcrude,to=threshveccrude[istcrude],
+                               by= min((threshveccrude[istcrude]-stsupthreshcrude)/m,FDRlevel/m))
+         ecdf0st <- max(sum(sortedpvalvec <= threshvecst[1]),1)/m
+         stFDP <- pi0est*threshvecst[1]/ecdf0st
+          stFDP0 <- stFDP
+         ist <-1
+        while (stFDP <= FDRlevel)
+        {
+          ist <- ist+1;
+          if (ist > length(threshvecst)) break
+          steCDF <- max(sum(sortedpvalvec <= threshvecst[ist]),1)/m
+          stFDP <- pi0est*threshvecst[ist]/steCDF
+          if (is.na(stFDP) | is.nan(stFDP)) print("NA or NaN occured as FDP for Storey's estimators in fine search")
+        }
+        if (ist==2) {stsupthresh <- threshvecst[1]
+          stFDPAtSThresh <- stFDP0     } else {
+        stsupthresh <- threshvecst[ist-1]
+         ecfstsupthresh <- max(sum(sortedpvalvec <= stsupthresh),1)/m
+        stFDPAtSThresh <- pi0est*stsupthresh/ecfstsupthresh }
+       #  cat("stFDPAtSThresh",stFDPAtSThresh,"at sup thresh",stsupthresh,"\n")
+      } # end of esle
+
+
+        # get discoveries
+        stDiscovery <- which(simpvalues <= stsupthresh)
+        if (length(stDiscovery)==0) print("No discoveries found by Storey's procedures")
+
+        StDiscoveries <- list(stDiscovery,c(stsupthresh,stFDPAtSThresh))
+        return(StDiscoveries)
+
+      }
+      
+# storey: the new qvalue package stops with error when there is p-value being exactly 1
+     # so the following is used
+     storeyPi0Est <- function(lambda,pvector)
+      {
+          # m is the coherent length of the argument
+           m <- length(pvector)
+
+          over <- m*(1-lambda)
+          stunmin <- sum(pvector > lambda)/over 
+          st <- min(1,stunmin)
+          if (is.nan(st))  print("Storey's estimator of pi0 is NaN")
+          if (is.na(st))  print("Storey's estimator of pi0 is NA")
+
+          return(st)
       }

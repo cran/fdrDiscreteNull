@@ -4,8 +4,9 @@
 #load things in the main simulation file
 
 GeneralizedEstimatorsGrouped = function(data_in = NULL,grpby = c("quantileOfRowTotal","kmeans","divergence"),ngrp_in = NULL,
-                                          test_in = NULL,FET_via_in = NULL,lowerTail_in = NULL, FDRlevel_in = NULL,
-                                            RefDivergence = NULL,eNetSize = NULL, unif_tol= 10^-3, Tunings =c(0.5,100)) 
+                                         GroupMergeSize = 150, minGroupSize = 50,
+                                          test_in = NULL, FET_via_in = NULL,OneSide_in = NULL, FDRlevel_in = NULL,
+                                            eNetSize = NULL, unif_tol= 10^-3, Tunings =c(0.5,100)) 
 {
 
    data_in = as.matrix(data_in)
@@ -13,7 +14,7 @@ GeneralizedEstimatorsGrouped = function(data_in = NULL,grpby = c("quantileOfRowT
   #################  stat of step 1: UNGrouped   ################
   cat("\n","^^^Implement UNGROUPED FDR procedures ...^^^","\n")
   UngroupedResults = GeneralizedFDREstimators(data=data_in, Test=test_in,
-                                  FET_via = FET_via_in,lowerTail = lowerTail_in, FDRlevel=FDRlevel_in,TuningRange = Tunings) 
+                                  FET_via = FET_via_in, OneSide = OneSide_in, FDRlevel=FDRlevel_in,TuningRange = Tunings) 
                                           
   pval_vec_ungrouped = UngroupedResults$pvalues   # pvalue vector
   pval_Supp_ungrped =  UngroupedResults$pvalSupp   # pvalue supports list 
@@ -71,32 +72,8 @@ GeneralizedEstimatorsGrouped = function(data_in = NULL,grpby = c("quantileOfRowT
 
       ##  reference divergences
      if (grpby == "divergence") {
-        
-        ## allow reference divergence
-        if (RefDivergence == "Yes") { 
-             
-             cat("^^Grouping by divergence: compute supremum norm w.r.t. Unif ...","\n")
-             d_supp = Div_Ref_Unif(pval_Supp_ungrped,test_in)
-             du_vec = d_supp[[1]]; ss_vec = d_supp[[2]]
-             
-             du_max = max(du_vec); du_min = min(du_vec)  #minimal is always zero
-             ss_max = max(ss_vec); ss_min = min(ss_vec)
-      
-             cat("Max and Min RefNorm:", du_max,",", du_min, "; Max and Min supp size:",ss_max,",",ss_min,"\n")
-             
-            # div_ref = du_vec/du_max + ss_vec/ss_max  # option A # relaxed triangular inequality
-             
-             div_ref = du_vec/du_max   # option B #relaxed triangular inequality
-             
-             div_ref_max = max(div_ref) ;  div_ref_min = min(div_ref); diff_div = div_ref_max - div_ref_min
-             
-             div_brks = seq(from=div_ref_min, to=div_ref_max, by=diff_div/ngrp)
-           } # end of reference divergence
-         
-         ## if not reference divergence  
-         if (RefDivergence == "No") {
-             
-             cat("^^Grouping by pairwises divergences. Be patient ...","\n")
+                 
+             cat("^^Grouping by pairwise divergences. Be patient ...","\n")
 
              # insert:  when  |F_i - id| <= m^-3, take it as uniform   
               pv_supp_And_id_appr_unif = Div_Appr_Unif(pval_Supp_ungrped,test_in, unif_tol)  #(pvSpList=NULL,test_used=NULL,appr_unif_tol = NULL) 
@@ -105,52 +82,41 @@ GeneralizedEstimatorsGrouped = function(data_in = NULL,grpby = c("quantileOfRowT
               
               lgX = length(id_appr_unif)
               if (lgX > 0)  { 
-                  cat("^^",lgX,"of p-value cdf's are very close to and will be identified as Unif","\n")
+                  cat("^^",lgX,"of p-value cdf's are very close to and will be identified as Uniform distribution","\n")
                   
                   if (lgX < m) {
                     id_pvDist_far_unif = (1:m)[-id_appr_unif]
                     ng_div =  ngrp-1
-                   # grpidx_list[[1]] = id_appr_unif   # first group via divergence
+                    grpidx_list[[1]] = id_appr_unif   # first group via divergence
                     
                     lgXa =  length(id_pvDist_far_unif)
                     pv_supp_far_unif = vector("list",lgXa)
                      for (iX in 1:lgXa)  
                       pv_supp_far_unif[[iX]] = pv_supp_formatted[[iX]]
                     }  
+                    if (lgX == m)
+                     stop("^^ All p-value CDF's are within", unif_tol, "infinity-norm from Uniform distribution. Please use Storey's procedure...")
                } else { 
-                     cat("^^All p-value cdf's are NOT close enough to Unif","\n") 
+                     cat("^^ No p-value cdf is within", unif_tol, "infinity-norm distance from Uniform distribution","\n") 
                      ng_div =  ngrp 
                      pv_supp_far_unif = pval_Supp_ungrped
                      }
              # end insertion  
              
              ## group those that are far from Unif
-             scalfac_in = 1
-             Diff_mat = GetDivergenceMatrix(scalfac_in,pv_supp_far_unif)  # change scalfac when needed
-             Divs_mat = Diff_mat[[1]]; chi_mat = Diff_mat[[2]]; infNorm_mat = Diff_mat[[3]]; chi_max = Diff_mat[[4]]
-    
-             chi_vec = as.vector(chi_mat[lower.tri(chi_mat,diag=FALSE)])
-             infNorm_vec = as.vector(infNorm_mat[lower.tri(infNorm_mat,diag=FALSE)])
-             Divs_vec = as.vector(Divs_mat[lower.tri(Divs_mat,diag=FALSE)])
-    
-             div_max = max(Divs_vec); div_min = 0 #min(Divs_vec)  #minimal is always zero
-    
-             cat("Max infNorm is", max(infNorm_vec), "; max ChiSD is",chi_max,"; max Div is",div_max,"\n")
-    
-             # boxplot may cause memory surge
-    
+             Divs_mat = GetDivergenceMatrix(pv_supp_far_unif)  # change scalfac when needed        
+             div_max = max(Divs_mat)     # boxplot may cause memory surge  
+             cat("^^ Maximal pairwise divergence is",div_max,"\n")
+              if (div_max == 0)   cat("^^ Homogeneous null distributions since their distances are identically 0...","\n")
+              
              # two cases for eNet size
              if (is.null(eNetSize))  {
-               rad = (div_max - div_min)/(2*ng_div) 
+               rad = div_max/(2*ng_div) 
                # make ngrp-1 groups out of those cdf's far from Unif  
-               grpidx_list_div = eNetFull(Divs_mat, ng_div, 30, rad, 30) #(data, ngrp, merge, rad, grpsize) 
+               grpidx_list_div = eNetFull(Divs_mat, ng_div, GroupMergeSize, rad, minGroupSize) #(data, ngrp, mergesize, rad, mingrpsize)
                }  else {
-                 grpidx_list_div = eNetFull(Divs_mat,ng_div, 30, eNetSize, 30)  # last arg, minimal gp size, 2nd von last merge size
+                 grpidx_list_div = eNetFull(Divs_mat,ng_div, GroupMergeSize, eNetSize, minGroupSize) 
                }  # end of eNet
-    
-            # ngp_div = length(grpidx_list_div)
-             cat("^^Number of groups for cdf's far from Unif via divergence is:", ng_div,"\n")
-           }  # end if not reference divergence  
          
          } #   end if divergence
 
@@ -167,21 +133,29 @@ GeneralizedEstimatorsGrouped = function(data_in = NULL,grpby = c("quantileOfRowT
        # start of groupwise analysis by kmeans
        if (grpby == "kmeans")  grpidx_list[[j]] = which(kmgrps$cluster == j)
 
-
-         
+       # assign grouping results via divergence
+        if (grpby == "divergence") {
+         # p-values with cdf's close to Unif are already as the first group grpidx_list[[1]]
+         if (lgX > 0 & lgX <m) {
+           if (j >1) {
+            grpidx_list[[j]] = grpidx_list_div[[j-1]]  
+           }
+           # if no p-value cdf is close enough to Uniform 
+           } else {
+               grpidx_list[[j]] = grpidx_list_div[[j]]
+             } 
+           }
        ############ start of  grouped data, groupwise anlysis  #######
        grpdata_list[[j]] = cbind(data_in[grpidx_list[[j]],],grpidx_list[[j]])
 
-       # in order to group, original data is added with a col of total counts
        nc_kep = ncol(data_in)
-
        grpdata_in = grpdata_list[[j]][,1:nc_kep]
-
+       cat("^^^ Checking number of hypotheses in each group ...", "\n")
        CheckIt(grpdata_in)   # check line
 
        ### when a group of data is non-empty, analyze them
        if (nrow(grpdata_in) == 0) {
-          stop("^^^Group ",j," has no data, please adjust the number of group to split data into...","\n")
+          stop("^^^Group ",j," has no data, please adjust the number of groups to split data into...","\n")
         } else {
          # estimate groupwise pi0
          pi0eg =  GenEstProp(pval_vec_ungrouped[grpidx_list[[j]]],pval_Supp_ungrped[grpidx_list[[j]]],Tunings)
@@ -240,7 +214,8 @@ GeneralizedEstimatorsGrouped = function(data_in = NULL,grpby = c("quantileOfRowT
          ### Now on grouped and weighted BH
          if ( pi0_ov_gp >= 1)   {
            cat("^^Overall pi0 est based on all groupwise ests is", pi0_ov_gp,". Setting weighted multiple testing results as zero", "\n")
-            TDP_BHwg = 0;   FDP_BHwg = 0;   Dis_BH_gw = double(0) 
+            TDP_BHwg = 0;   FDP_BHwg = 0;   Dis_BH_gw = double(0)
+            wFDR = list("pi0Est" = pi0_ov_gp, "Threshold" = 0, "NumberOfDiscoveries" = 0,"IndicesOfDiscoveries" = double(0))  
             }  else {
                  cat("^^Implement weighted procedure by MEANINGFUL weighting ...","\n")
                  FDRlevel_ada = FDRlevel_in/(1- pi0_ov_gp)

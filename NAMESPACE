@@ -1,8 +1,9 @@
 import(MCMCpack)
+importFrom("qvalue","pi0est")
 importFrom("graphics", "boxplot", "par")
 importFrom("stats", "dbinom", "dhyper", "fisher.test", "kmeans",
              "pbinom", "phyper", "quantile")
-importFrom("stats", "stepfun")
+importFrom("stats", "stepfun","runif")
 export(GeneralizedEstimatorsGrouped,GeneralizedFDREstimators)
 
 
