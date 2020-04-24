@@ -1,5 +1,5 @@
 ####################################################################
-###########  function 6: check basic numeric properties  ############
+###########  function: check basic numeric properties  ############
 ####################################################################
 # small function
 CheckIt = function(vector_in) {
@@ -174,9 +174,9 @@ GetDivergenceMatrix = function(pvSpList=NULL)  {
       
   }
   
-######################### ########################## ##########################   
-  ### Identify Approximate Uniform, this function also formats different psupport
-  ######################### ########################## ########################## 
+ ######################### ########################## ##########################   
+### Identify Approximate Uniform, this function also formats different psupport
+######################### ########################## ########################## 
  
   Div_Appr_Unif = function(pvSpList=NULL,test_used=NULL,appr_unif_tol = NULL) {
       lg3 = length(pvSpList)
@@ -192,12 +192,33 @@ GetDivergenceMatrix = function(pvSpList=NULL)  {
     return(list(pvSpList,id_appr_unif))       
   } # end of func
  
- 
-       
- ## merged from mod func for generalized estimator
-       ##############################################################################
-      #### subsection 1: Function to get full tables for  association studies #########
-      ###############################################################################
+  
+  
+  #######################################################################
+  ####   Distribution of the p-values  (Generally Applicable)  #########
+  #######################################################################
+  
+  pvalueDist <- function(peva,support)
+  {
+    lgh=length(support)
+    lgh3 <- length(peva)
+    y <- double(lgh3)
+    for (i in 1:lgh3)  {
+      cpv <- peva[i] >= support
+      # the key is to compare where t falls in the support
+      if (sum(cpv)==0) {y[i]=0} # because t is strictly less than minimum of support
+      else if (sum(cpv)==lgh) {y[i]=1} # because t is no less than maximum of support
+      else # t falls in one interval
+      {  y[i] <- support[max(which(cpv))]   }
+    }
+    return(y)
+  }
+  
+  
+
+       ######################################################################
+      ####     Function to get full tables for  association studies #########
+      #######################################################################
       fulltable <- function(twocoldata)
       {
         # m is the # rows in the data
@@ -227,8 +248,7 @@ GetDivergenceMatrix = function(pvSpList=NULL)  {
 
 
       ################################################################# ###########################
-      #### Subsection 3: Function to Get marginals and cellcounts from generated counts
-      #####             for association stuies
+      #### Function to Get marginals and cellcounts from generated counts for association stuies
       ################################################################# ###########################
 
       getcellcountsandmarginals <- function(countveccontrol,countvectreat)
@@ -247,8 +267,41 @@ GetDivergenceMatrix = function(pvSpList=NULL)  {
           return(y2)
       }
 
+      ############################################################# ###########################
+      #### Function to Get marginals and cellcounts from generated counts for differential expression
+      ################################################################# ###########################
+      
+      getcellcountsandmarginals_DE <- function(data_in)
+      {
+        m <-nrow(data_in)
+        # construct 3-3 full table
+        tables<- array(0, dim=c(3,3,m))
+        
+        tables[1,1,] = data_in[,1]
+        tables[2,1,] = data_in[,2]
+        tables[1,2,] = data_in[,3] - data_in[,1]
+        tables[2,2,] = data_in[,4] - data_in[,2]
+        tables[1,3,]= data_in[,3]
+        tables[2,3,]= data_in[,4]
+        tables[3,3,] = data_in[,3] + data_in[,4]
+        tables[3,1,] = data_in[,1] + data_in[,2]
+        tables[3,2,] = tables[3,3,] - tables[3,1,]
+        
+        simallcellcounts <- vector("list",m)
+        for (i in 1:m) {simallcellcounts[[i]] <- tables[1:2,1:2,i]}
+        
+        simallmarginals <- vector("list",m)
+        for (i in 1:m) {simallmarginals[[i]] <- c(tables[1,3,i],tables[2,3,i],tables[3,1,i])}
+        
+        y2 <- list(simallcellcounts,simallmarginals)
+        return(y2)
+      }
+      
+      
+      
+      
  ###################################################################################
-  #### Subsection 4: Function to two-sided p-value support for FET
+  #### Function to get two-sided p-valu and its support for FET
   ###################################################################################
 
     pvalFETSupport <- function(cellmatrix)
@@ -267,9 +320,9 @@ GetDivergenceMatrix = function(pvSpList=NULL)  {
 
            # two-sided pvalue
            pvalue <- sum(mass[which(mass <= realizedmass)])
-            # add: sum of probabilities of y such that P(y) < P(X)
+            # add: sum_y P(y) over y such that P(y) < P(X)
            lessProb = sum(mass[which(mass < realizedmass)])
-           # eqProb: Psum_y P(y) st P(y) = P(x)
+           # eqProb: sum_y P(y) over y such that P(y) = P(x)
            eqProb = pvalue - lessProb
            
            if (is.na(pvalue)) print("pvalue is NaN")
@@ -285,12 +338,12 @@ GetDivergenceMatrix = function(pvSpList=NULL)  {
            # sort pvalue support
           psupport <- unique(sort(temp,decreasing=FALSE))
 
-          # u either runif or =0.5 or = 1
-        randPval = lessProb + mean(runif(50))*eqProb  # average of 50 realizations
+          # randomized p-value
+        randPval = pvalue - mean(runif(1))*eqProb  # definition from Dickhaus et al Lemma 2
         randPval = min(1,randPval)
         
         # mid p-value
-        MidPval = lessProb + 0.5*eqProb
+        MidPval = lessProb + 0.5*eqProb # definition from HWang et al 2001
         MidPval = min(1,MidPval)
           # return all three p-values
           pvals = c(pvalue,MidPval,randPval)
@@ -300,66 +353,44 @@ GetDivergenceMatrix = function(pvSpList=NULL)  {
           return(support)
           }
 
-      ################################################################# ######### ######### ######### #########
-      #### Subsection 5: Function to compuete deltas (lambda - F(lambda) for adjusted estimator         #########
-      ################################################################# ######### #########  ######### #########
-      # works for each support
-      deviations <- function(lambda,asupport)
-      {
-            # remove the lst entry of asupport since it is the mean
-            bigornot <- lambda >= asupport
-            bignum <- sum(bigornot)
 
-             ### if lambda smaller than the smallest pvalue, then delta[i]=lambda
-            if ( bignum ==0)    { delta=lambda}
-
-            # if lambda falls into an interval formed by successive points in support
-            if ( bignum > 0)
-            {      fall= max(which(bigornot))
-             delta=lambda- asupport[-1][fall] }
-          return(delta)
-      }
-
-
-      #################################################################################
-      ####   Subsection 10: Distribution of the p-values  (Generally Applicable)  #########
-      #################################################################################
-
-       pvalueDist <- function(peva,support)
-          {
-            lgh=length(support)
-            lgh3 <- length(peva)
-            y <- double(lgh3)
-            for (i in 1:lgh3)  {
-              cpv <- peva[i] >= support
-              # the key is to compare where t falls in the support
-              if (sum(cpv)==0) {y[i]=0} # because t is strictly less than minimum of support
-              else if (sum(cpv)==lgh) {y[i]=1} # because t is no less than maximum of support
-              else # t falls in one interval
-              {  y[i] <- support[max(which(cpv))]   }
-            }
-            return(y)
-            }
-
-
-      ################################################################################### #######################
-      #### Subsection 14: pvalue supports, under true null  Test Stat ~ Bino for equality of two Poisson   #########
-      ###################################################################################   #####################
+      ################################################################################### 
+      ####  Function to get two-sided pvalue and its support for binomial test    #########
+      ###################################################################################
 
       pvalueByBinoSupport <- function(marginal)
       {
-          #  under null that two poisson rates are equal, the UMP test follows Binomial with p=0.5
-          # get all possible masses
-          mass <- dbinom(seq(from=0,to=marginal[2]),marginal[2],0.5)
+        #  under null that two poisson rates are equal, the UMP test follows Binomial with p=0.5
+        spTmp = seq(from=0,to=marginal[2])
+        d <- dbinom(spTmp,marginal[2],0.5,TRUE) ### using log of probs provides more accurate values
+        ord <- order(d)
+        d.ordered <- d[ord]
+        
+        # when marginal[2] is odd, the null CDF is symmetric and each prob appears twice
+        relDev <- abs(diff(d.ordered)) ### check differences
+        idx <- which(relDev > 0 & relDev <= .Machine$double.eps*2) ### "2" has proven to be a good choice
+        # slight numerical correction
+        ler = length(idx)  
+        if (ler >0) {  
+          for (jx in 1:ler) {
+            d.ordered[c(idx[jx], idx[jx] + 1)] <- sum(d.ordered[c(idx[jx], idx[jx] + 1)])/2        
+          } } 
+        
+        d.ordered <- exp(d.ordered)
+        s <- sum(d.ordered) # check total prob
+        if(s != 1) d.ordered <- d.ordered/s     
+        d <- d.ordered[order(ord)]              ### restore original order (if necessary)
+        #### end of correction
+        mass = d      # re-assign
 
           ## compute pvalue
-          realizedmass <- dbinom(marginal[1],marginal[2],0.5)
+          realizedmass <- mass[which(spTmp==marginal[1])]
 
            # two-sided pvalue
            pvalue <- sum(mass[which(mass <= realizedmass)])
            # add: sum of probabilities of y such that P(y) < P(X)
            lessProb = sum(mass[which(mass < realizedmass)])
-           # eqProb: Psum_y P(y) st P(y) = P(x)
+           # eqProb: sum_y P(y) st P(y) = P(x)
            eqProb = pvalue - lessProb
            
            # check p-value
@@ -376,8 +407,8 @@ GetDivergenceMatrix = function(pvSpList=NULL)  {
           # sort pvalue support
           psupport <- sort(temp,decreasing=FALSE)
           
-          # u either runif or =0.5 or = 1
-        randPval = lessProb + mean(runif(50))*eqProb  
+          # ranomized p-value
+        randPval = pvalue - mean(runif(1))*eqProb  
         randPval = min(1,randPval)
         
         # mid p-value
@@ -391,63 +422,127 @@ GetDivergenceMatrix = function(pvSpList=NULL)  {
           return(support)
           }
 
-
-     # storey: the new qvalue package stops with error when there is p-value being exactly 1
-     # so the following is used
-     storeyEst <- function(lambda,pvector)
+      
+      #############################################################
+      ######## one-sided p-value and its support for FET ##########
+      ########################################################
+      pvalOneSideFETSupport <- function(cellmatrix, Side = "Right")
       {
-          # m is the coherent length of the argument
-           m <- length(pvector)
-
-          over <- m*(1-lambda)
-          stunmin <- sum(pvector > lambda)/over 
-          st <- min(1,stunmin)
-          if (is.nan(st))  print("Storey's estimator of pi0 is NaN")
-          if (is.na(st))  print("Storey's estimator of pi0 is NA")
-
-          return(st)
+        ns = cellmatrix[1,1]; nw = sum(cellmatrix[,1]); nb = sum(cellmatrix[,2]); nd = sum(cellmatrix[1,]);
+        drx = dhyper(ns, nw, nb, nd)
+        lo <- max(0, nd - nb);   hi <- min(nd, nw)
+        #          x <- x[1, 1]; m <- sum(x[, 1]);    n <- sum(x[, 2]); k <- sum(x[1, ])
+        #        lo <- max(0, k - n);   hi <- min(k, m);       support <- lo:hi
+        #        logdc <- dhyper(support, m, n, k, log = TRUE)
+        
+        if (Side == "Right") {
+          # get support
+          psupport = dhyper(lo:ns, nw, nb, nd) + phyper(lo:ns, nw, nb, nd,lower.tail = FALSE)
+          psupport = unique(sort(psupport))
+          # tail
+          ptail =  phyper(ns, nw, nb, nd,lower.tail = FALSE)
+          # type of p-value
+          pvalO = ptail + drx
+          pvalMid = ptail + 0.5*drx    #definition from HWang et al 2001
+          pvalRnd = ptail + mean(runif(1))*drx   # definition from Habiger 2015
+        } 
+        
+        if (Side == "Left") {
+          # get support
+          psupport = phyper(lo:nd, nw, nb, nd)
+          psupport = unique(sort(psupport))
+          # tail
+          ptail =  phyper(ns, nw, nb, nd)
+          # type of p-value
+          pvalO = ptail
+          pvalMid = ptail - drx + 0.5*drx     #by duality
+          pvalRnd = ptail - drx + mean(runif(1))*drx  #by duality
+        }
+        
+        # save pval and support
+        pvals = c(pvalO,pvalMid,pvalRnd)
+        support<- c(pvals,psupport)   
+        return(support)
       }
-########## added new scheme for generalized estimator
-GenEstProp <- function(pvector,psupports,tunings=c(0.5,100))
+      
+      ########################################################
+      ######## one-sided p-value and its support for Binomial ##########
+      ########################################################
+      pvalOneSideBTSupport <- function(cellvector, Side = "Right")
+      {
+        ns = cellvector[1]; nt = cellvector[2]
+        drx = dbinom(ns, nt,0.5)
+        
+        if (Side == "Right") {
+          # get support
+          psupport = pbinom(0:ns, nt,0.5,lower.tail = FALSE) + dbinom(0:ns, nt,0.5)
+          psupport = unique(sort(psupport))
+          # tail
+          ptail =  pbinom(ns, nt,0.5,lower.tail = FALSE)
+          # type of pval
+          pvalO = ptail + drx
+          pvalMid = ptail + 0.5*drx
+          pvalRnd = ptail + mean(runif(1))*drx 
+        } 
+        
+        if (Side == "Left") {
+          # get support
+          psupport = pbinom(0:nt, nt,0.5)
+          psupport = unique(sort(psupport))
+          # tail
+          ptail =  pbinom(ns, nt,0.5)
+          # type of p-value
+          pvalO = ptail
+          pvalMid = ptail - drx + 0.5*drx     #by duality
+          pvalRnd = ptail - drx + mean(runif(1))*drx  #by duality
+        }
+        
+        # save pvalue and support
+        pvals = c(pvalO,pvalMid,pvalRnd)
+        support<- c(pvals,psupport)   
+        return(support)
+      }
+      
+
+########## generalized estimator of proportion
+GenEstProp <- function(pvector,psupports,TuningPar=c(0.5,100))
   {
     # m is the coherent length of the argument
     m = length(pvector)
-
-    # define smallest guiding value
     minSupp = unlist(lapply(psupports, min))
+    
+    # define smallest guiding value
     maxmin = max(minSupp)
-    cat("^^Maximum of the minimum of each support is: ",maxmin,"\n")
+    cat("^^max of min's of supports: ",maxmin,"\n")
     
-    if (maxmin == 1) {
-      cat("^^At lest one p-value CDF is a Dirac mass ...","\n")      
-      singPsupp = which(minSupp == 1)      
-      maxminA = max(minSupp[-singPsupp])
+    singPsupp = which(minSupp == 1)
+    NofDirac = length(singPsupp)
       
-      cat("^^Second maximum of the minumum of each non-singleton support is: ",maxminA,"\n")
-      if (maxminA < 0.5) {
-        tunings = seq(maxminA+tunings[1]*(0.5-maxminA), 0.5,length.out=tunings[2])
-      } else{ 
-        tunings = c(maxminA)  
-      }
+    if (NofDirac == m) {
+      cat("^^All CDF's are Dicac masses ..","\n")
+      genest = 1
+      } else {  #  case 2: NofDirac < m; this case lasts till the end of estimation
+  
+        if (NofDirac >0) { # case 2(a): m>NofDirac >0
+          maxminA = max(minSupp[-singPsupp])
+          cat("^^second max of min's of supports: ",maxminA,"\n")
+          schLoc = (1:m)[-singPsupp]
+        if (maxminA < 0.5) {
+          tunings = seq(maxminA+TuningPar[1]*(0.5-maxminA), 0.5,length.out=TuningPar[2])
+        } else{ 
+          tunings = c(maxminA)  
+          }
+        } else {  # case 2(b):   maxmin < 1, i.e., NofDirac = 0, i.e. no dirac mass
+          schLoc = 1:m
+          if (maxmin < 0.5) {
+            tunings = seq(maxmin+TuningPar[1]*(0.5-maxmin), 0.5,length.out=TuningPar[2])
+          } else {  
+            tunings = c(maxmin)  
+           }
+          
+        } # end of case 2(b)
       
-    } else {
-      singPsupp = double(0)
-      if (maxmin < 0.5) {
-        tunings = seq(maxmin+tunings[1]*(0.5-maxmin), 0.5,length.out=tunings[2])
-      } else {  
-        tunings = c(maxmin)  
-      }
-      
-    } 
-    
-    # define which supports are to be searched
-    if (length(singPsupp) == 0) {
-      schLoc = 1:m
-    }  else {
-      schLoc = (1:m)[-singPsupp]
-    } 
-    
-    # start search
+    # start search  if  NofDirac <m
     Lt = length(tunings)
     est = double(Lt)
     cuts = double(m)
@@ -471,11 +566,12 @@ GenEstProp <- function(pvector,psupports,tunings=c(0.5,100))
       
       est[j] = min(1,esttmp)
     }
-    #genest = min(est[est>0])
+    # take the average
     genest = mean(est[!is.nan(est)])
+   } # end of case 2: NofDirac < m 
+    
     return(genest)
   }
-
 
     ###################################################
     ####### Subsection 19: BH FDR procedure        ########
@@ -557,117 +653,7 @@ GenEstProp <- function(pvector,psupports,tunings=c(0.5,100))
               }
             return(rejAndTresh)
       }
-  ############################################################# ###########################
-      #### Subsection 23: Function to Get marginals and cellcounts from generated counts
-      #####             for differential expression
-      ################################################################# ###########################
 
- getcellcountsandmarginals_DE <- function(data_in)
-      {
-        m <-nrow(data_in)
-        # construct 3-3 full table
-        tables<- array(0, dim=c(3,3,m))
-
-        tables[1,1,] = data_in[,1]
-        tables[2,1,] = data_in[,2]
-        tables[1,2,] = data_in[,3] - data_in[,1]
-        tables[2,2,] = data_in[,4] - data_in[,2]
-        tables[1,3,]= data_in[,3]
-        tables[2,3,]= data_in[,4]
-        tables[3,3,] = data_in[,3] + data_in[,4]
-        tables[3,1,] = data_in[,1] + data_in[,2]
-        tables[3,2,] = tables[3,3,] - tables[3,1,]
-        
-        simallcellcounts <- vector("list",m)
-        for (i in 1:m) {simallcellcounts[[i]] <- tables[1:2,1:2,i]}
-
-        simallmarginals <- vector("list",m)
-        for (i in 1:m) {simallmarginals[[i]] <- c(tables[1,3,i],tables[2,3,i],tables[3,1,i])}
-
-         y2 <- list(simallcellcounts,simallmarginals)
-          return(y2)
-      }
-      
-      
-######## one-sided p-value and its support for FET ##########
-     # p-value = pbinom(qbinom(.)) + u dbinom(qbinom(.))
-
-     pvalOneSideFETSupport <- function(cellmatrix, Side = "Right")
-      {
-           ns = cellmatrix[1,1]; nw = sum(cellmatrix[,1]); nb = sum(cellmatrix[,2]); nd = sum(cellmatrix[1,]);
-          drx = dhyper(ns, nw, nb, nd)
-          lo <- max(0, nd - nb);   hi <- min(nd, nw)
-          #          x <- x[1, 1]; m <- sum(x[, 1]);    n <- sum(x[, 2]); k <- sum(x[1, ])
-#        lo <- max(0, k - n);   hi <- min(k, m);       support <- lo:hi
-#        logdc <- dhyper(support, m, n, k, log = TRUE)
-
-          if (Side == "Right") {
-            # get support
-            psupport = dhyper(lo:ns, nw, nb, nd) + phyper(lo:ns, nw, nb, nd,lower.tail = FALSE)
-            psupport = unique(sort(psupport))
-            # tail
-            ptail =  phyper(ns, nw, nb, nd,lower.tail = FALSE)
-            # type of p-value
-               pvalO = ptail + drx
-                 pvalMid = ptail + 0.5*drx
-                pvalRnd = ptail + mean(runif(50))*drx
-           } 
-           
-           if (Side == "Left") {
-             # get support
-            psupport = phyper(lo:nd, nw, nb, nd)
-            psupport = unique(sort(psupport))
-            # tail
-             ptail =  phyper(ns, nw, nb, nd)
-              # type of p-value
-               pvalO = ptail
-                 pvalMid = ptail - drx + 0.5*drx
-               pvalRnd = ptail - drx + mean(runif(50))*drx
-           }
-
-          # save pval and support
-          pvals = c(pvalO,pvalMid,pvalRnd)
-          support<- c(pvals,psupport)   # this is list now
-          return(support)
-          }
-
- ######## one-sided p-value and its support for Binomial ##########
-     # p-value = pbinom(qbinom(.)) + u dbinom(qbinom(.))
-     pvalOneSideBTSupport <- function(cellvector, Side = "Right")
-      {
-           ns = cellvector[1]; nt = cellvector[2]
-          drx = dbinom(ns, nt,0.5)
-
-          if (Side == "Right") {
-            # get support
-            psupport = pbinom(0:ns, nt,0.5,lower.tail = FALSE) + dbinom(0:ns, nt,0.5)
-            psupport = unique(sort(psupport))
-            # tail
-            ptail =  pbinom(ns, nt,0.5,lower.tail = FALSE)
-            # type of pval
-             pvalO = ptail + drx
-               pvalMid = ptail + 0.5*drx
-                pvalRnd = ptail + mean(runif(50))*drx 
-           } 
-           
-           if (Side == "Left") {
-             # get support
-            psupport = pbinom(0:nt, nt,0.5)
-            psupport = unique(sort(psupport))
-            # tail
-             ptail =  pbinom(ns, nt,0.5)
-              # type of p-value
-            pvalO = ptail
-               pvalMid = ptail - drx + 0.5*drx
-               pvalRnd = ptail - drx + mean(runif(50))*drx   
-           }
-
-          # save pvalue and support
-          pvals = c(pvalO,pvalMid,pvalRnd)
-          support<- c(pvals,psupport)   # this is list now
-          return(support)
-          }
-          
 
  ### heyse2011 adjusted p-values
     HeyseAdjFunc = function (pvec, pSupps)
@@ -712,7 +698,7 @@ GenEstProp <- function(pvector,psupports,tunings=c(0.5,100))
         return(pH)
       }
  
- #######################################################################
+    #######################################################################
     #### Subsection 18:  Storey's procedure               #########
     #######################################################################
 
@@ -797,7 +783,7 @@ GenEstProp <- function(pvector,psupports,tunings=c(0.5,100))
 
       }
       
-# storey: the new qvalue package stops with error when there is p-value being exactly 1
+     # storey: the new qvalue package stops with error when there is p-value being exactly 1
      # so the following is used
      storeyPi0Est <- function(lambda,pvector)
       {

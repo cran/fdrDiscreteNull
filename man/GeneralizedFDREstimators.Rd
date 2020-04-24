@@ -3,7 +3,7 @@
 \alias{GeneralizedFDREstimators}
 \title{Adaptive false discovery rate procedure using generalized estimator of the null proportion.}
 \description{
-Implement false discovery rate procedures, inlcuding the Adaptive Benjamini-Hochberg procedure, the Adaptive Benjamini-Hochberg-Heyse procedure, using the generalized estimator of the proportion of true nulls, for discrete p-values distributions.
+Implement false discovery rate procedures of Chen, X., Doerge, R. and Heyse, J. F. (2018), the Adaptive Benjamini-Hochberg procedure, and the Adaptive Benjamini-Hochberg-Heyse procedure, using the generalized estimator of the proportion of true nulls, for discrete p-values distributions.
 }
 \usage{
 GeneralizedFDREstimators(data=NULL,
@@ -54,17 +54,10 @@ It also returns the following:
 Finally, it also returns randomized p-values (as "RndPval") and results (as "SARP") of the procedure in  Habiger (2015) that is exactly the procedure of Storey et al. (2004) applied to the randomized p-values, and mid p-values (as "MidPval") and "aBHmidP" as the adaptive BH procedure of Benjamini and Hochberg (1995) applied to these mid p-values together with the estimated proportion of true null hypotheses obtained by Storey's estimator in Storey et al. (2004) applied to these mid p-values.
 }
 \references{
- Benjamini, Y. and Hochberg, Y. (1995). Controlling the false discovery rate: a
- practical and powerful approach to multiple testing, J. R. Statist. Soc. Ser. B
- 57(1): 289-300.
- 
-  Chen, X. and Doerge, R. (2017). A weighted FDR procedure under discrete and heterogeneous null distributions,
- \url{https://arxiv.org/abs/1502.00973v4}.
- 
-  Chen, X., Doerge, R. and Heyse, J. F. (2017). Multiple testing with discrete data: proportion of true null hypotheses and two adaptive {FDR} procedures, \url{https://arxiv.org/abs/1410.4274v2}.
+Chen, X., Doerge, R. and Heyse, J. F. (2018). Multiple testing with discrete data: proportion of true null hypotheses and two adaptive {FDR} procedures. Biometrial Journal 60(4): 761-779.
 
 Habiger, J. D. (2015). Multiple test functions and adjusted p-values for test statistics with
-discrete distributions, J. Stat. Plan. Inference 167: 1-13.
+discrete distributions. J. Stat. Plan. Inference 167: 1-13.
  
 Heyse, J. F. (2011). A false discovery rate procedure for categorical data, in M. Bhattacharjee,
 S. K. Dhar and S. Subramanian (eds), Recent Advances in Biostatistics: False Discovery
@@ -72,11 +65,7 @@ Rates, Survival Analysis, and Related Topics, chapter 3.
 
 Lister, R., O'Malley, R., Tonti-Filippini, J., Gregory, B. D., Berry, Charles C. Millar,
  A. H. and Ecker, J. R. (2008). Highly integrated single-base resolution maps of the
- epigenome in arabidopsis, Cell 133(3): 523-536.
- 
-Storey, J. D., Taylor, J. E. and Siegmund, D. (2004). Strong control, conservative point estimation
-in simultaneous conservative consistency of false discover rates: a unied approach, J.
-R. Statist. Soc. Ser. B 66(1): 187-205.
+ epigenome in arabidopsis. Cell 133(3): 523-536.
 }
 \seealso{
 \code{\link{GeneralizedEstimatorsGrouped}}

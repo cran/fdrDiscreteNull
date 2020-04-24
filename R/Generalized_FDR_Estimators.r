@@ -1,7 +1,7 @@
 #########################################################################
 # Generalized Estimator of Proportion of True Nulls
 # This file contains the main functions for Generalized FDR Estimators
-# Contact: xiongzhi@princeton.edu
+# Contact: xiongzhi.chen@wsu.edu
 ####################################################################
 
 ### Start of main function  

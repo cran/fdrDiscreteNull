@@ -3,10 +3,9 @@
 ################################################################################
 #load things in the main simulation file
 
-GeneralizedEstimatorsGrouped = function(data_in = NULL,grpby = c("quantileOfRowTotal","kmeans","divergence"),ngrp_in = NULL,
-                                         GroupMergeSize = 150, minGroupSize = 50,
-                                          test_in = NULL, FET_via_in = NULL,OneSide_in = NULL, FDRlevel_in = NULL,
-                                            eNetSize = NULL, unif_tol= 10^-3, Tunings =c(0.5,100)) 
+GeneralizedEstimatorsGrouped = function(data_in = NULL,grpby = c("quantileOfRowTotal","kmeans","InfNorm"),ngrp_in = NULL,
+                                         GroupMergeSize = 50,test_in = NULL, FET_via_in = NULL,OneSide_in = NULL, FDRlevel_in = NULL,
+                                          eNetSize = NULL, unif_tol= 10^-3, TuningPar =c(0.5,100), lambda = 0.5) 
 {
 
    data_in = as.matrix(data_in)
@@ -14,12 +13,12 @@ GeneralizedEstimatorsGrouped = function(data_in = NULL,grpby = c("quantileOfRowT
   #################  stat of step 1: UNGrouped   ################
   cat("\n","^^^Implement UNGROUPED FDR procedures ...^^^","\n")
   UngroupedResults = GeneralizedFDREstimators(data=data_in, Test=test_in,
-                                  FET_via = FET_via_in, OneSide = OneSide_in, FDRlevel=FDRlevel_in,TuningRange = Tunings) 
+                                  FET_via = FET_via_in, OneSide = OneSide_in, FDRlevel=FDRlevel_in,TuningRange = TuningPar) 
                                           
   pval_vec_ungrouped = UngroupedResults$pvalues   # pvalue vector
   pval_Supp_ungrped =  UngroupedResults$pvalSupp   # pvalue supports list 
   
-  # pi0 estimated ungrouped by 2 methods; pi0Est_st_ugp is storey Est 
+  # pi0Est_st_ugp is storey Est 
   pi0Est_ugp = UngroupedResults$pi0Est; 
   
   ### end of gathering results   UNGrouped
@@ -34,7 +33,7 @@ GeneralizedEstimatorsGrouped = function(data_in = NULL,grpby = c("quantileOfRowT
    grpres_list = vector("list",ngrp);    wgtPval_list = vector("list",ngrp)
    wgtSTPval_list = vector("list",ngrp)
 
-    pi0Est_gped = double(0);    namepiEstgp = double(0);  pi0_ov_gp = 0; 
+    pi0Est_gped = double(0);    namepiEstgp = double(0);  pi0_ov_gp = 0; wgt_all = double(0); nameWgt_all = double(0) 
 
     grpId_dis = double(0);  grpId_STdis = double(0);  
     
@@ -70,13 +69,12 @@ GeneralizedEstimatorsGrouped = function(data_in = NULL,grpby = c("quantileOfRowT
         kmgrps = kmeans(cbind(diffCounts,totalCounts),centers = ngrp)
         }
 
-      ##  reference divergences
-     if (grpby == "divergence") {
-                 
-             cat("^^Grouping by pairwise divergences. Be patient ...","\n")
+      ##  group by distance
+     if (grpby == "InfNorm") {             
+             cat("^^Grouping by pairwise InfNorm without a reference distribution. Be patient ...","\n")
 
              # insert:  when  |F_i - id| <= m^-3, take it as uniform   
-              pv_supp_And_id_appr_unif = Div_Appr_Unif(pval_Supp_ungrped,test_in, unif_tol)  #(pvSpList=NULL,test_used=NULL,appr_unif_tol = NULL) 
+              pv_supp_And_id_appr_unif = Div_Appr_Unif(pval_Supp_ungrped, unif_tol)  #(pvSpList=NULL,test_used=NULL,appr_unif_tol = NULL) 
               pv_supp_formatted = pv_supp_And_id_appr_unif[[1]]
               id_appr_unif = pv_supp_And_id_appr_unif[[2]]
               
@@ -87,7 +85,7 @@ GeneralizedEstimatorsGrouped = function(data_in = NULL,grpby = c("quantileOfRowT
                   if (lgX < m) {
                     id_pvDist_far_unif = (1:m)[-id_appr_unif]
                     ng_div =  ngrp-1
-                    grpidx_list[[1]] = id_appr_unif   # first group via divergence
+                    grpidx_list[[1]] = id_appr_unif   # first group via distance to uniform distribution
                     
                     lgXa =  length(id_pvDist_far_unif)
                     pv_supp_far_unif = vector("list",lgXa)
@@ -95,30 +93,29 @@ GeneralizedEstimatorsGrouped = function(data_in = NULL,grpby = c("quantileOfRowT
                       pv_supp_far_unif[[iX]] = pv_supp_formatted[[iX]]
                     }  
                     if (lgX == m)
-                     stop("^^ All p-value CDF's are within", unif_tol, "infinity-norm from Uniform distribution. Please use Storey's procedure...")
+                     stop("^^ All p-value CDF's are within", unif_tol, "InfNorm from Uniform distribution...")
                } else { 
-                     cat("^^ No p-value cdf is within", unif_tol, "infinity-norm distance from Uniform distribution","\n") 
+                     cat("^^ No p-value cdf is within", unif_tol, "InfNorm distance from Uniform distribution","\n") 
                      ng_div =  ngrp 
                      pv_supp_far_unif = pval_Supp_ungrped
                      }
              # end insertion  
              
              ## group those that are far from Unif
-             Divs_mat = GetDivergenceMatrix(pv_supp_far_unif)  # change scalfac when needed        
-             div_max = max(Divs_mat)     # boxplot may cause memory surge  
-             cat("^^ Maximal pairwise divergence is",div_max,"\n")
-              if (div_max == 0)   cat("^^ Homogeneous null distributions since their distances are identically 0...","\n")
+             Divs_mat = GetDivergenceMatrix(pv_supp_far_unif)          
+             div_max = max(Divs_mat)       
+             cat("^^ Maximal pairwise InfNorm is ",div_max,"\n")
+              if (div_max == 0)   cat("^^ Homogeneous null CDFs ...","\n")
               
              # two cases for eNet size
              if (is.null(eNetSize))  {
                rad = div_max/(2*ng_div) 
                # make ngrp-1 groups out of those cdf's far from Unif  
-               grpidx_list_div = eNetFull(Divs_mat, ng_div, GroupMergeSize, rad, minGroupSize) #(data, ngrp, mergesize, rad, mingrpsize)
+               grpidx_list_div = eNetFull(Divs_mat, ng_div, GroupMergeSize, rad) #(data, ngrp, mergesize, rad)
                }  else {
-                 grpidx_list_div = eNetFull(Divs_mat,ng_div, GroupMergeSize, eNetSize, minGroupSize) 
+                 grpidx_list_div = eNetFull(Divs_mat,ng_div, GroupMergeSize, eNetSize) 
                }  # end of eNet
-         
-         } #   end if divergence
+         } #   end of grouping via InfNorm
 
      #################### start of grouping and groupwise analysis ####################  
      for (j in 1:ngrp) {
@@ -133,9 +130,9 @@ GeneralizedEstimatorsGrouped = function(data_in = NULL,grpby = c("quantileOfRowT
        # start of groupwise analysis by kmeans
        if (grpby == "kmeans")  grpidx_list[[j]] = which(kmgrps$cluster == j)
 
-       # assign grouping results via divergence
-        if (grpby == "divergence") {
-         # p-values with cdf's close to Unif are already as the first group grpidx_list[[1]]
+       # grouping via pairwise InfNorm
+        if (grpby == "InfNorm") {
+         # p-values with cdf's very close to Unif are already as the first group grpidx_list[[1]]
          if (lgX > 0 & lgX <m) {
            if (j >1) {
             grpidx_list[[j]] = grpidx_list_div[[j-1]]  
@@ -158,89 +155,102 @@ GeneralizedEstimatorsGrouped = function(data_in = NULL,grpby = c("quantileOfRowT
           stop("^^^Group ",j," has no data, please adjust the number of groups to split data into...","\n")
         } else {
          # estimate groupwise pi0
-         pi0eg =  GenEstProp(pval_vec_ungrouped[grpidx_list[[j]]],pval_Supp_ungrped[grpidx_list[[j]]],Tunings)
+         pi0eg =  GenEstProp(pval_vec_ungrouped[grpidx_list[[j]]],pval_Supp_ungrped[grpidx_list[[j]]],TuningPar)
           
           # removed storey's pi0 est for each group
           pi0Est_gped = c(pi0Est_gped, pi0eg)
           namepiEstgp = c(namepiEstgp,paste('pi0Est_gp',j,sep=""))
+          
+          ## estimate weights
+          pvalGpTmp = pval_vec_ungrouped[grpidx_list[[j]]]
+         nGpTmp = length(pvalGpTmp)
+         RejGPTmp = sum(pvalGpTmp<=lambda)
+         RejAllTmp = sum(pval_vec_ungrouped<=lambda)
+         mTmp = length(pval_vec_ungrouped)
+         
+         if (RejAllTmp == 0) {
+              wgt_tmp = Inf
+           } else {
+              wgt_gp =  (1/mTmp)*((nGpTmp - RejGPTmp+1)/(1-lambda))*((RejAllTmp+ngrp_in-1)/RejGPTmp)
+          }
+          # removed storey's pi0 est for each group
+          wgt_all = c(wgt_all, wgt_gp)
+          nameWgt_all = c(nameWgt_all,paste('weight_gp',j,sep=""))
+        
        }   ##  only analyze non-empty grouped data     
    } ######## end of loop for (j in 1:ngrp) ######
    
    ## display estimated pi0
-    cat("\n","^^--Estimated pi0 for each group by generalized estimator",pi0Est_gped,"--","\n") 
-    if (any(pi0Est_gped==1))
+    cat("\n","^^--Estimated pi0 for each group by generalized estimator",pi0Est_gped,"--","\n")
+    cat("\n","^^--Estimated weight for each group",wgt_all,"--","\n") 
+    
+    if (any(is.infinite(wgt_all)))
       cat("^^ --- infinity weight appears --","\n") 
       
        ####################################################################################
        ######### step 3: start of weighting the p-values from the ungrouped procedure  ############
        ####################################################################################
-       # grouping by divergence can create intersecting groups, for which HU 2010 JASA weighting does not work
+       # grouping by distance can create intersecting groups, for which HU 2010 JASA weighting does not work
 
-       ### step 3.1: check if parition via divergence is reached
+       ### step 3.1: check if parition via distance is reached
         non_partition = 0
         for (j1 in 2:ngrp) {
              for (j2 in 1:(j1-1)) {
                  non_partition = non_partition + any(grpidx_list[[j1]] %in% grpidx_list[[j2]])  }  }
-
-       union_chk = length(unlist(grpidx_list))== m
-
-        is_partition = 1- non_partition - !union_chk
-
+            cat("^^Are groups produced by a partition?", non_partition==0, "\n")
+       union_chk = (length(unlist(grpidx_list))== m)
+        cat("^^Are all hypotheses split into groups?", union_chk, "\n")
+        
+        is_partition = 1- non_partition - !union_chk             
+            
         if (is_partition) {
                cat("\n","^^^----- Partition by grouping obtained. Ready for weighting ...","\n")
                }  else {
-                cat("^^ ------Partition by grouping NOT obtained. Weighting will NOT be applied...","\n") }
+                cat("^^ ------Partition by grouping NOT obtained. Weighting will NOT be applied...","\n")
+                pi0_ov_gp = NA
+              }
 
     # if partition reached, then compute weights and following steps
-    if (grpby != "divergence" | is_partition) {
+    if (grpby != "InfNorm" | is_partition) {
 
          ### step 3.2: get overall pi0est and weight ungrouped pvalues
          for (j in 1:ngrp) {
-            # pi0eg = grpres_list[[j]][[1]]$pi0Est
-              pi0eg = pi0Est_gped[j];    wgt = pi0eg/(1-pi0eg);  
-
-             ###### start of overall pi0est  #############
-              pi0_ov_gp = pi0_ov_gp + pi0eg*length(grpidx_list[[j]])/m
-
+            # retrieve weights
+              wgt = wgt_all[j]   
              ### weigthing pvalues from ungrouped analysis
              pval_vec_ungrouped_gp = pval_vec_ungrouped[grpidx_list[[j]]]
              wgtPval_list[[j]] =  pval_vec_ungrouped_gp*wgt
 
+             ## overall pi0
+             pi0eg = pi0Est_gped[j]
+             pi0_ov_gp = pi0_ov_gp + pi0eg*length(grpidx_list[[j]])/m
              }  # end: overall pi0est and weight ungrouped pvalues
 
-
+         nmpi0es = c("pi0E_GE","pi0E_gGE",namepiEstgp)
+        pi0EstTmp = matrix(0,1,length(nmpi0es))
+         pi0EstTmp[1,] = c(pi0Est_ugp,pi0_ov_gp,pi0Est_gped)
+        colnames(pi0EstTmp) =  nmpi0es
+  
        ######### step 3.4: start: apply grouped and weighted scheme to BH if needed #####
        wgtPval_vec = unlist(wgtPval_list) 
          ### Now on grouped and weighted BH
-         if ( pi0_ov_gp >= 1)   {
-           cat("^^Overall pi0 est based on all groupwise ests is", pi0_ov_gp,". Setting weighted multiple testing results as zero", "\n")
+         if (is.infinite(min(wgt_all)))   {
+           cat("^^ ---- All weights are infinite; no rejections by grouped, adaptively weighted BH", "\n")
             TDP_BHwg = 0;   FDP_BHwg = 0;   Dis_BH_gw = double(0)
-            wFDR = list("pi0Est" = pi0_ov_gp, "Threshold" = 0, "NumberOfDiscoveries" = 0,"IndicesOfDiscoveries" = double(0))  
+            wFDR = list("pi0estAll"=pi0EstTmp, "Weights" = wgt_all,"Threshold" = 0, "NumberOfDiscoveries" = 0,"IndicesOfDiscoveries" = double(0))  
             }  else {
-                 cat("^^Implement weighted procedure by MEANINGFUL weighting ...","\n")
-                 FDRlevel_ada = FDRlevel_in/(1- pi0_ov_gp)
-                 Dis_BH_gw <- BHFDRApp(wgtPval_vec,FDRlevel_ada)
+                 cat("^^Implement grouped, weighted BH procedure by MEANINGFUL weighting ...","\n")
+                 Dis_BH_gw <- BHFDRApp(wgtPval_vec,FDRlevel_in)
               
-               wFDR = list("pi0Est" = pi0_ov_gp, "Threshold" = Dis_BH_gw[[2]], "NumberOfDiscoveries" = length(Dis_BH_gw[[1]][,2]),"IndicesOfDiscoveries" = Dis_BH_gw[[1]][,2])   
+               wFDR = list("pi0estAll"=pi0EstTmp, "Weights" = wgt_all, "Threshold" = Dis_BH_gw[[2]], "NumberOfDiscoveries" = length(Dis_BH_gw[[1]][,2]),"IndicesOfDiscoveries" = Dis_BH_gw[[1]][,2])   
 
-            }  ## end weighted grouped BH by Gen est
+            }  ## end weighted grouped BH
 
 
     } # end if partition, then compute weights
 
   #################### step 4: start: collection all results #####################
-  # if partition not reached, overall pi0 est is undefined
-  if (grpby == "divergence" & non_partition != 0) {
-      pi0_ov_gp = NA }
-
-  nmpi0es = c("pi0E_GE","pi0E_gGE",namepiEstgp)
-  pi0EstTmp = matrix(0,1,length(nmpi0es))
-  pi0EstTmp[1,] = c(pi0Est_ugp,pi0_ov_gp,pi0Est_gped)
-  colnames(pi0EstTmp) =  nmpi0es
 
  # get results
- results_grp = list("aBHH"=UngroupedResults$aBHH,"BHH"=UngroupedResults$BHH,"BH"=UngroupedResults$BH,
- "aBH"=UngroupedResults$aBH,
- "wFDR"=wFDR, "pi0estAll"=pi0EstTmp,"pvalues" =UngroupedResults$pvalues,"pvalSupp" =UngroupedResults$pvalSupp,
- "adjpval"=UngroupedResults$adjpval)   
+ results_grp = list("UngroupedResults"=UngroupedResults, "wFDR"=wFDR)   
 } # end of main function
